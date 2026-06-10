@@ -81,6 +81,7 @@ Math, in words or symbols — use whichever you like:
 
 Plus: `square root of`, `absolute value of`, `round`, `floor of`,
 `middle of A and B` (whole-number midpoint — handy for binary search),
+`bigger of A and B`, `smaller of A and B`,
 `negative 5` or `-5`, `random from 1 to 100`.
 
 Parentheses group things, just like in math class: `set m to (low + high) / 2`.
@@ -122,6 +123,16 @@ print first of nums
 print last of nums
 print the first 3 of nums       # slice
 print the last 2 of nums
+```
+
+Rearrange a list in place:
+
+```
+swap nums[1] and nums[3]        # works on plain variables too: swap a and b
+insert 99 into nums at 2
+remove item 2 from nums
+remove the last from nums into top      # pop - perfect for a stack
+remove the first from nums into front   # dequeue - perfect for a queue
 ```
 
 Transform or filter a whole list in one line:
@@ -184,6 +195,8 @@ if score is at least 90 then ... end         # or:  if score >= 90 then
 if score is at most 100 then ... end         # or:  if score <= 100 then
 if score is between 1 and 10 then ... end
 if n is divisible by 3 then ... end
+if n is odd then ... end
+if n is even then ... end
 if n is positive then ... end
 if n is negative then ... end
 if bag is empty then ... end

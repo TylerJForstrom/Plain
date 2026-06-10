@@ -1,0 +1,35 @@
+# LeetCode #20: Valid Parentheses
+# Brackets are valid if every opener closes in the right order:
+# "([])" is good, "(]" and "([)]" are not.
+#
+# The classic trick is a stack (a pile): push openers on top; when a
+# closer arrives, the top of the pile must be its matching opener.
+
+to is_valid with text
+    set match to {")": "(", "]": "[", "}": "{"}
+    set pile to []
+    for each ch in letters of text
+        if ch is one of ["(", "[", "{"] then
+            add ch to pile
+        otherwise if match has ch then
+            if pile is empty then
+                give back false
+            end
+            remove the last from pile into top
+            if top != match[ch] then
+                give back false
+            end
+        end
+    end
+    if pile is empty then
+        give back true
+    end
+    give back false
+end
+
+expect is_valid("()[]{}") to equal true
+expect is_valid("([{}])") to equal true
+expect is_valid("(]") to equal false
+expect is_valid("([)]") to equal false
+expect is_valid("(((") to equal false
+print "Valid parentheses works!"
