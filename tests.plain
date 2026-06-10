@@ -574,5 +574,28 @@ expect b to equal 1
 set x and y and z to [10, 20, 30]
 expect x + y + z to equal 60
 
+# --- Neighbor pairs ---
+set gaps to []
+for each pair of a and b in [1, 4, 9, 16]
+    add b - a to gaps
+end
+expect gaps to equal [3, 5, 7]
+
+to is_sorted with nums
+    for each pair of x and y in nums
+        if x > y then
+            give back false
+        end
+    end
+    give back true
+end
+expect is_sorted([1, 2, 2, 3]) to equal true
+expect is_sorted([2, 1]) to equal false
+expect is_sorted([7]) to equal true
+
+# 'pair' itself is not a reserved word
+set pair to [1, 2]
+expect pair[2] to equal 2
+
 print ""
 print "Tests finished. Every line above should say OK."

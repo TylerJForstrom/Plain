@@ -439,6 +439,9 @@ def parse_stmt_inner(p):
             if s[0] == "range":
                 _, name, start, stop, step_expr = s
                 return ("rangefor", name, start, stop, step_expr, body)
+            if s[0] == "pairs":
+                _, n1, n2, seq = s
+                return ("pairfor", n1, n2, seq, body)
             _, name, seq, step, backwards, iname = s
             return ("for", name, seq, step, backwards, iname, body)
         return ("multifor", specs, body)
@@ -533,6 +536,15 @@ def parse_loop_spec(p, first):
             f"Line {p.line()}: Expected 'each' or 'every other' after 'for'")
     else:
         step = 1  # "and c from 1 to 3" - the extra 'each' is optional
+    # for each pair of x and y in nums - walks neighbors: (1st,2nd), (2nd,3rd)...
+    if p.peek() == ("ID", "pair") and p.peek2() == ("KW", "of"):
+        p.eat()
+        p.eat()
+        n1 = p.expect("ID")[1]
+        p.expect("KW", "and")
+        n2 = p.expect("ID")[1]
+        p.expect("KW", "in")
+        return ("pairs", n1, n2, parse_expr(p))
     name = p.expect("ID")[1]
     # for each ch at position i in word  - i counts 1, 2, 3, ...
     iname = None
@@ -1593,6 +1605,19 @@ def run(node, env):
             except StopLoop:
                 break
             v += direction * step
+    elif t == "pairfor":
+        _, n1, n2, seq_n, body = node
+        seq = list(evaluate(seq_n, env))
+        for a, b in zip(seq, seq[1:]):
+            env[n1] = a
+            env[n2] = b
+            try:
+                for s in body:
+                    run(s, env)
+            except SkipLoop:
+                continue
+            except StopLoop:
+                break
     elif t == "multifor":
         # Several loops written as one: "for each r ... and c ... end".
         # 'skip' moves to the next combination; 'stop' leaves the whole thing.
@@ -1618,6 +1643,13 @@ def run(node, env):
                     env[name] = v
                     run_level(k + 1)
                     v += direction * step
+            elif spec[0] == "pairs":
+                _, n1, n2, seq_n = spec
+                seq = list(evaluate(seq_n, env))
+                for a, b in zip(seq, seq[1:]):
+                    env[n1] = a
+                    env[n2] = b
+                    run_level(k + 1)
             else:
                 _, name, seq_n, step, backwards, iname = spec
                 seq = list(evaluate(seq_n, env))
