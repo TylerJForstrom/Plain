@@ -313,7 +313,22 @@ def parse_stmt_inner(p):
 
     if tok == ("KW", "ask"):
         p.eat()
-        return ("ask", p.expect("ID")[1])
+        name = p.expect("ID")[1]
+        prompt = None
+        if p.accept("KW", "with"):
+            prompt = parse_expr(p)
+        return ("ask", name, prompt)
+
+    if tok == ("KW", "try"):
+        # try ... otherwise ... end - if anything in the try part goes
+        # wrong, the otherwise part runs with 'error' holding the message.
+        p.eat()
+        body = parse_block(p, ["otherwise", "end"])
+        handler = []
+        if p.accept("KW", "otherwise"):
+            handler = parse_block(p, ["end"])
+        p.expect("KW", "end")
+        return ("try", body, handler)
 
     if tok == ("KW", "wait"):
         p.eat()
@@ -616,6 +631,21 @@ def parse_cmp(p):
         node = ("parity", left, 1)
     elif p.accept("KW", "even"):
         node = ("parity", left, 0)
+    elif p.peek() == ("ID", "a") and p.peek2() in (
+            ("ID", "number"), ("KW", "list"), ("KW", "lookup"), ("ID", "text")):
+        # type checks: is a number / is a list / is a lookup / is a text
+        p.eat()
+        if p.accept("ID", "number"):
+            node = ("typeis", left, "number")
+        elif p.accept("KW", "list"):
+            node = ("typeis", left, "list")
+        elif p.accept("KW", "lookup"):
+            node = ("typeis", left, "lookup")
+        else:
+            p.expect("ID", "text")
+            node = ("typeis", left, "text")
+    elif p.accept("ID", "text"):
+        node = ("typeis", left, "text")
     else:
         raise SyntaxError(
             "Expected 'equal to', 'greater/less than', 'one of', or 'between'"
@@ -835,6 +865,10 @@ def parse_atom_base(p):
     # current time
     if p.accept("KW", "now"):
         return ("call", "now", [])
+
+    # values typed after the program name on the command line
+    if p.accept("KW", "arguments"):
+        return ("call", "argv", [])
 
     # slicing: "the first N of LIST" / "the last N of LIST"
     if p.accept("KW", "the"):
@@ -1070,6 +1104,16 @@ def evaluate(node, env):
         return evaluate(node[1], env) % evaluate(node[2], env) == 0
     if t == "parity":
         return int(evaluate(node[1], env)) % 2 == node[2]
+    if t == "typeis":
+        v = evaluate(node[1], env)
+        kind = node[2]
+        if kind == "number":
+            return isinstance(v, (int, float)) and not isinstance(v, bool)
+        if kind == "text":
+            return isinstance(v, str)
+        if kind == "list":
+            return isinstance(v, list)
+        return isinstance(v, dict)
     if t == "isempty":
         return len(evaluate(node[1], env)) == 0
     if t == "logic":
@@ -1144,6 +1188,7 @@ def evaluate(node, env):
             return [[fill for _ in range(cols)] for _ in range(rows)]
         if name == "max2":    return max(vals)
         if name == "min2":    return min(vals)
+        if name == "argv":    return [coerce(a) for a in sys.argv[2:]]
         if name == "letters":   return list(to_str(x))
         if name == "keys":      return list(x.keys())
         if name == "values":    return list(x.values())
@@ -1300,7 +1345,18 @@ def run(node, env):
     elif t == "print":
         print(to_str(evaluate(node[1], env)))
     elif t == "ask":
-        env[node[1]] = coerce(input("> "))
+        prompt = "> "
+        if node[2] is not None:
+            prompt = to_str(evaluate(node[2], env)) + " "
+        env[node[1]] = coerce(input(prompt))
+    elif t == "try":
+        try:
+            for s in node[1]:
+                run(s, env)
+        except PlainRuntimeError as e:
+            env["error"] = str(e)
+            for s in node[2]:
+                run(s, env)
     elif t == "wait":
         time.sleep(float(evaluate(node[1], env)))
     elif t == "if":
@@ -1445,7 +1501,9 @@ def run(node, env):
 
 
 def coerce(s):
-    s = s.strip()
+    s = s.strip().strip("\ufeff").strip()
+    if s.startswith("\u00ef\u00bb\u00bf"):  # a UTF-8 marker read under the wrong encoding
+        s = s[3:].strip()
     try:
         return int(s)
     except ValueError:

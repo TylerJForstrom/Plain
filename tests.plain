@@ -447,5 +447,57 @@ set names to keys of scores
 sort names by scores at it backwards
 expect names to equal ["bob", "carl", "amy"]
 
+# --- try / otherwise ---
+set result to "untouched"
+try
+    set result to 10 / 0
+otherwise
+    set result to "rescued"
+end
+expect result to equal "rescued"
+set flag to 0
+if error contains "divide by zero" then
+    flag = 1
+end
+expect flag to equal 1
+
+set result to 0
+try
+    set result to 5
+otherwise
+    set result to -1
+end
+expect result to equal 5
+
+set nums to [1]
+try
+    print nums[99]
+otherwise
+    set result to "caught bad position"
+end
+expect result to equal "caught bad position"
+
+# --- type checks ---
+set flag to 0
+if 5 is a number then
+    flag += 1
+end
+if "hi" is text then
+    flag += 1
+end
+if [1] is a list then
+    flag += 1
+end
+if {} is a lookup then
+    flag += 1
+end
+if "5" is a number then
+    flag += 100
+end
+if 5 is not text then
+    flag += 1
+end
+expect flag to equal 5
+
 print ""
 print "Tests finished. Every line above should say OK."
