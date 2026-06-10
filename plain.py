@@ -52,7 +52,7 @@ KEYWORDS = {
     "item", "position", "remainder", "letters", "keys", "values",
     "least", "most", "has", "floor", "middle",
     # list surgery and parity
-    "insert", "swap", "odd", "even",
+    "insert", "swap", "odd", "even", "replace",
 }
 
 TOKEN_RE = re.compile(
@@ -722,8 +722,6 @@ def parse_power(p):
 
 # One-argument built-in expressions: (keyword, internal-name, separator-keyword)
 UNARY_BUILTINS = [
-    ("count",     "count",     "of"),
-    ("length",    "count",     "of"),
     ("sum",       "sum",       "of"),
     ("average",   "average",   "of"),
     ("biggest",   "max",       "in"),
@@ -843,6 +841,22 @@ def parse_atom_base(p):
         p.expect("KW", "and")
         return ("call", "middle", [a, parse_atom(p)])
 
+    # count of LIST, and count of X in LIST (how many times X appears)
+    if p.accept("KW", "count") or p.accept("KW", "length"):
+        p.expect("KW", "of")
+        a = parse_atom(p)
+        if p.accept("KW", "in"):
+            return ("call", "countin", [a, parse_atom(p)])
+        return ("call", "count", [a])
+
+    # replace "a" with "b" in TEXT (or in a list, swapping matching items)
+    if p.accept("KW", "replace"):
+        a = parse_atom(p)
+        p.expect("KW", "with")
+        b = parse_atom(p)
+        p.expect("KW", "in")
+        return ("call", "replace", [a, b, parse_atom(p)])
+
     # one-argument built-ins
     for kw, fn, sep in UNARY_BUILTINS:
         if p.accept("KW", kw):
@@ -952,6 +966,33 @@ def parse_atom_base(p):
         p.expect("ID", "filled")
         p.expect("KW", "with")
         return ("call", "grid", [rows, cols, parse_atom(p)])
+
+    # trim of TEXT - remove spaces from both ends ('trim' is not reserved)
+    if p.peek() == ("ID", "trim") and p.peek2() == ("KW", "of"):
+        p.eat()
+        p.eat()
+        return ("call", "trim", [parse_atom(p)])
+
+    # items 2 to 4 of LIST - a slice by positions (works on text too)
+    if p.peek() == ("ID", "items") and p.peek2()[0] in ("NUM", "ID"):
+        p.eat()
+        a = parse_expr(p)
+        p.expect("KW", "to")
+        b = parse_expr(p)
+        p.expect("KW", "of")
+        return ("call", "slice", [parse_atom(p), a, b])
+
+    # numbers from 1 to 10 [by 2] - a ready-made list of numbers
+    if p.peek() == ("ID", "numbers") and p.peek2() == ("KW", "from"):
+        p.eat()
+        p.eat()
+        a = parse_atom(p)
+        p.expect("KW", "to")
+        b = parse_atom(p)
+        step = ("num", 1)
+        if p.accept("KW", "by"):
+            step = parse_atom(p)
+        return ("call", "numrange", [a, b, step])
 
     # bigger of A and B / smaller of A and B  (also not reserved words)
     if p.peek() == ("ID", "bigger") and p.peek2() == ("KW", "of"):
@@ -1215,6 +1256,27 @@ def evaluate(node, env):
         if name == "max2":    return max(vals)
         if name == "min2":    return min(vals)
         if name == "argv":    return [coerce(a) for a in sys.argv[2:]]
+        if name == "countin":
+            item, container = vals
+            if isinstance(container, list):
+                return container.count(item)
+            return to_str(container).count(to_str(item))
+        if name == "replace":
+            old, new, container = vals
+            if isinstance(container, list):
+                return [new if item == old else item for item in container]
+            return to_str(container).replace(to_str(old), to_str(new))
+        if name == "trim":      return to_str(x).strip()
+        if name == "slice":
+            seq = vals[0] if isinstance(vals[0], (str, list)) else list(vals[0])
+            i, j = max(1, int(vals[1])), min(len(seq), int(vals[2]))
+            return seq[i - 1:j] if i <= j else seq[:0]
+        if name == "numrange":
+            a, b, s = int(vals[0]), int(vals[1]), int(vals[2])
+            if s <= 0:
+                raise RuntimeError(
+                    "The step in 'numbers from ... by ...' must be a positive number.")
+            return list(range(a, b + 1, s)) if b >= a else list(range(a, b - 1, -s))
         if name == "letters":   return list(to_str(x))
         if name == "keys":      return list(x.keys())
         if name == "values":    return list(x.values())
