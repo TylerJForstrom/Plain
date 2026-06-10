@@ -478,6 +478,22 @@ def parse_cmp(p):
         p.expect("KW", "with")
         return ("endswith", left, parse_expr(p))
 
+    # X does not contain Y / have Y / start with Y / end with Y
+    if p.peek() == ("ID", "does") and p.peek2() == ("KW", "not"):
+        p.eat()
+        p.eat()
+        if p.accept("ID", "contain") or p.accept("ID", "have"):
+            return ("logic", "not", ("member", parse_expr(p), left), None)
+        if p.accept("ID", "start"):
+            p.expect("KW", "with")
+            return ("logic", "not", ("startswith", left, parse_expr(p)), None)
+        if p.accept("KW", "end"):
+            p.expect("KW", "with")
+            return ("logic", "not", ("endswith", left, parse_expr(p)), None)
+        raise SyntaxError(
+            f"Line {p.line()}: Expected 'contain', 'have', 'start with', "
+            f"or 'end with' after 'does not'")
+
     if not p.accept("KW", "is"):
         # No comparison at all: the value itself is the condition
         # (so "if done then" works when done is true/false).

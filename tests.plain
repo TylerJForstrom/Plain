@@ -341,5 +341,24 @@ for each a from 1 to 2 and b from 1 to 2
 end
 expect kept to equal ["1-2", "2-1"]
 
+# --- does not contain / have / start with / end with ---
+set flag to 0
+if "hello" does not contain "z" then
+    flag += 1
+end
+if [1, 2] does not have 3 then
+    flag += 1
+end
+if "hello" does not start with "z" then
+    flag += 1
+end
+if "hello" does not end with "z" then
+    flag += 1
+end
+if "hello" does not contain "ell" then
+    flag += 100
+end
+expect flag to equal 4
+
 print ""
 print "Tests finished. Every line above should say OK."
