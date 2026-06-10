@@ -286,5 +286,60 @@ to add_pair with a and b
 end
 expect call add_pair with 2 + 3 and 10 to equal 15
 
+# --- Nested lists and grids ---
+set board to [[1, 2], [3, 4]]
+expect board[2][1] to equal 3
+board[1][2] = 99
+expect board[1][2] to equal 99
+set item 1 of item 2 of board to 7
+expect board[2][1] to equal 7
+set board at 2 at 2 to 8
+expect board[2][2] to equal 8
+
+set blank to grid of 2 by 3 filled with 0
+expect count of blank to equal 2
+expect count of blank[1] to equal 3
+expect blank[2][3] to equal 0
+expect blank to equal [[0, 0, 0], [0, 0, 0]]
+
+# 'grid' still works as an ordinary variable name
+set grid to [1, 2]
+expect grid[2] to equal 2
+
+# --- Nested loops in one line ---
+set pairs to []
+for each a from 1 to 3 and b from 1 to 2
+    add "[a]-[b]" to pairs
+end
+expect count of pairs to equal 6
+expect pairs[1] to equal "1-1"
+expect pairs[6] to equal "3-2"
+
+set total to 0
+set rows to [[1, 2, 3], [4, 5]]
+for each row in rows and cell in row
+    total += cell
+end
+expect total to equal 15
+
+# stop leaves the whole combined loop, skip moves to the next pair
+set found to ""
+for each a from 1 to 5 and b from 1 to 5
+    if a * b == 12 and a < b then
+        found = "[a]x[b]"
+        stop
+    end
+end
+expect found to equal "3x4"
+
+set kept to []
+for each a from 1 to 2 and b from 1 to 2
+    if a == b then
+        skip
+    end
+    add "[a]-[b]" to kept
+end
+expect kept to equal ["1-2", "2-1"]
+
 print ""
 print "Tests finished. Every line above should say OK."

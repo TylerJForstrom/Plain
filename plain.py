@@ -327,32 +327,22 @@ def parse_stmt_inner(p):
 
     if tok == ("KW", "for"):
         p.eat()
-        if p.accept("KW", "each"):
-            step = 1
-        elif p.accept("KW", "every"):
-            p.expect("KW", "other")
-            step = 2
-        else:
-            raise SyntaxError("Expected 'each' or 'every other' after 'for'")
-        name = p.expect("ID")[1]
-        if p.accept("KW", "from"):
-            start = parse_expr(p)
-            p.expect("KW", "to")
-            stop = parse_expr(p)
-            step_expr = ("num", 1)
-            if p.accept("KW", "by"):
-                step_expr = parse_expr(p)
-            body = parse_block(p, ["end"])
-            p.expect("KW", "end")
-            return ("rangefor", name, start, stop, step_expr, body)
-        p.expect("KW", "in")
-        seq = parse_expr(p)
-        backwards = bool(p.accept("KW", "going"))
-        if backwards:
-            p.expect("KW", "backwards")
+        # One loop, or several nested in one line:
+        #   for each r from 1 to 3 and c from 1 to 3 ... end
+        #   for each row in grid and cell in row ... end
+        specs = [parse_loop_spec(p, first=True)]
+        while p.accept("KW", "and"):
+            specs.append(parse_loop_spec(p, first=False))
         body = parse_block(p, ["end"])
         p.expect("KW", "end")
-        return ("for", name, seq, step, backwards, body)
+        if len(specs) == 1:
+            s = specs[0]
+            if s[0] == "range":
+                _, name, start, stop, step_expr = s
+                return ("rangefor", name, start, stop, step_expr, body)
+            _, name, seq, step, backwards = s
+            return ("for", name, seq, step, backwards, body)
+        return ("multifor", specs, body)
 
     if tok == ("KW", "read"):
         p.eat()
@@ -406,6 +396,34 @@ def parse_stmt_inner(p):
 
     raise SyntaxError(suggest(
         f"Line {p.line()}: I don't understand '{tok[1] or tok[0]}'", tok))
+
+
+def parse_loop_spec(p, first):
+    if p.accept("KW", "each"):
+        step = 1
+    elif p.accept("KW", "every"):
+        p.expect("KW", "other")
+        step = 2
+    elif first:
+        raise SyntaxError(
+            f"Line {p.line()}: Expected 'each' or 'every other' after 'for'")
+    else:
+        step = 1  # "and c from 1 to 3" - the extra 'each' is optional
+    name = p.expect("ID")[1]
+    if p.accept("KW", "from"):
+        start = parse_expr(p)
+        p.expect("KW", "to")
+        stop = parse_expr(p)
+        step_expr = ("num", 1)
+        if p.accept("KW", "by"):
+            step_expr = parse_expr(p)
+        return ("range", name, start, stop, step_expr)
+    p.expect("KW", "in")
+    seq = parse_expr(p)
+    backwards = bool(p.accept("KW", "going"))
+    if backwards:
+        p.expect("KW", "backwards")
+    return ("seq", name, seq, step, backwards)
 
 
 def parse_if(p):
@@ -766,6 +784,18 @@ def parse_atom_base(p):
     if p.accept("KW", "it"):
         return ("var", "it")
 
+    # grid of 3 by 4 filled with 0   (a list of lists, ready for 2D problems;
+    # 'grid' stays usable as a normal variable name everywhere else)
+    if p.peek() == ("ID", "grid") and p.peek2() == ("KW", "of"):
+        p.eat()
+        p.eat()
+        rows = parse_atom(p)
+        p.expect("KW", "by")
+        cols = parse_atom(p)
+        p.expect("ID", "filled")
+        p.expect("KW", "with")
+        return ("call", "grid", [rows, cols, parse_atom(p)])
+
     line = p.line()
     tok = p.eat()
     if tok[0] == "NUM": return ("num", tok[1])
@@ -964,6 +994,9 @@ def evaluate(node, env):
             if isinstance(container, str):
                 return container.find(to_str(item)) + 1
             return container.index(item) + 1 if item in container else 0
+        if name == "grid":
+            rows, cols, fill = int(vals[0]), int(vals[1]), vals[2]
+            return [[fill for _ in range(cols)] for _ in range(rows)]
         if name == "letters":   return list(to_str(x))
         if name == "keys":      return list(x.keys())
         if name == "values":    return list(x.values())
@@ -1143,6 +1176,44 @@ def run(node, env):
             except StopLoop:
                 break
             v += direction * step
+    elif t == "multifor":
+        # Several loops written as one: "for each r ... and c ... end".
+        # 'skip' moves to the next combination; 'stop' leaves the whole thing.
+        _, specs, body = node
+
+        def run_level(k):
+            if k == len(specs):
+                try:
+                    for s in body:
+                        run(s, env)
+                except SkipLoop:
+                    pass
+                return
+            spec = specs[k]
+            if spec[0] == "range":
+                _, name, start_n, stop_n, step_n = spec
+                start = int(evaluate(start_n, env))
+                stop = int(evaluate(stop_n, env))
+                step = int(evaluate(step_n, env))
+                direction = 1 if stop >= start else -1
+                v = start
+                while (direction > 0 and v <= stop) or (direction < 0 and v >= stop):
+                    env[name] = v
+                    run_level(k + 1)
+                    v += direction * step
+            else:
+                _, name, seq_n, step, backwards = spec
+                seq = list(evaluate(seq_n, env))
+                if backwards:
+                    seq = seq[::-1]
+                for item in seq[::step]:
+                    env[name] = item
+                    run_level(k + 1)
+
+        try:
+            run_level(0)
+        except StopLoop:
+            pass
     elif t == "readlines":
         path = evaluate(node[2], env)
         with open(path, "r", encoding="utf-8") as f:
