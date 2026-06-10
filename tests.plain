@@ -499,5 +499,40 @@ if 5 is not text then
 end
 expect flag to equal 5
 
+# --- Math on positions and keys ---
+set nums to [10, 20, 30]
+add 5 to nums at 2
+expect nums to equal [10, 25, 30]
+nums[1] += 1
+nums[3] -= 10
+expect nums to equal [11, 25, 20]
+nums[1] *= 2
+expect nums[1] to equal 22
+subtract 5 from nums at 2
+expect nums[2] to equal 20
+
+# counting words: missing lookup keys start at 0
+set tally to {}
+for each w in split "a b a c a b" by " "
+    add 1 to tally at w
+end
+expect tally to equal {"a": 3, "b": 2, "c": 1}
+expect tally["a"] to equal 3
+tally["b"] += 10
+expect tally["b"] to equal 12
+
+set board to [[0, 0], [0, 0]]
+add 7 to board[2][1]
+expect board to equal [[0, 0], [7, 0]]
+
+# --- put ... into ---
+put 5 into total
+expect total to equal 5
+set row to [1, 2, 3]
+put 99 into row at 2
+expect row to equal [1, 99, 3]
+put "x" into row[3]
+expect row to equal [1, 99, "x"]
+
 print ""
 print "Tests finished. Every line above should say OK."

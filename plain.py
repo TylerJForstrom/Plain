@@ -236,13 +236,28 @@ def parse_stmt_inner(p):
         p.eat()
         e = parse_expr(p)
         p.expect("KW", "to")
-        return ("add", p.expect("ID")[1], e)
+        name, keys = parse_target(p)
+        if keys:
+            return ("addpath", name, keys, e)
+        return ("add", name, e)
 
     if tok == ("KW", "subtract"):
         p.eat()
         e = parse_expr(p)
         p.expect("KW", "from")
-        return ("sub", p.expect("ID")[1], e)
+        name, keys = parse_target(p)
+        if keys:
+            return ("subpath", name, keys, e)
+        return ("sub", name, e)
+
+    if tok == ("KW", "put"):
+        p.eat()
+        val = parse_expr(p)
+        p.expect("KW", "into")
+        name, keys = parse_target(p)
+        if keys:
+            return ("setpath", name, keys, val)
+        return ("set", name, val)
 
     if tok == ("KW", "remove"):
         p.eat()
@@ -446,6 +461,17 @@ def parse_stmt_inner(p):
             keys.append(parse_expr(p))
             p.expect("OP", "]")
         if keys:
+            if p.accept("OP", "+="):
+                return ("addpath", name, keys, parse_expr(p))
+            if p.accept("OP", "-="):
+                return ("subpath", name, keys, parse_expr(p))
+            cur = ("var", name)
+            for k in keys:
+                cur = ("index", cur, k)
+            if p.accept("OP", "*="):
+                return ("setpath", name, keys, ("bin", "*", cur, parse_expr(p)))
+            if p.accept("OP", "/="):
+                return ("setpath", name, keys, ("bin", "/", cur, parse_expr(p)))
             if not p.accept("OP", "="):
                 p.expect("KW", "to")
             return ("setpath", name, keys, parse_expr(p))
@@ -1262,6 +1288,33 @@ def run(node, env):
             raise NameError(f"You haven't set '{name}' yet.")
         keys = [evaluate(k, env) for k in key_nodes]
         path_set(env, name, keys, evaluate(val_n, env))
+    elif t == "addpath" or t == "subpath":
+        # add 1 to tally at word / nums[2] += 1 / subtract 1 from hp["boss"]
+        # Adding to a lookup key that isn't there yet starts it at 0,
+        # just like 'add 1 to x' does for a brand-new variable.
+        _, name, key_nodes, e = node
+        keys = [evaluate(k, env) for k in key_nodes]
+        v = evaluate(e, env)
+        container = path_get(env, name, keys[:-1])
+        key = keys[-1]
+        if isinstance(container, dict):
+            cur = container.get(key, 0)
+            if t == "addpath" and isinstance(cur, list):
+                cur.append(v)
+            else:
+                container[key] = add_vals(cur, v) if t == "addpath" else cur - v
+        elif isinstance(container, list):
+            i = int(key)
+            if i < 1 or i > len(container):
+                raise RuntimeError(
+                    f"Position {i} is outside the list (it has {len(container)} items).")
+            cur = container[i - 1]
+            if t == "addpath" and isinstance(cur, list):
+                cur.append(v)
+            else:
+                container[i - 1] = add_vals(cur, v) if t == "addpath" else cur - v
+        else:
+            raise RuntimeError(f"'{name}' is not a list or lookup.")
     elif t == "removepos":
         _, name, which, dest = node
         lst = env.get(name)
