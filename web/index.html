@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plain — code that reads like English</title>
+<meta name="description" content="Plain is a programming language that reads like English. Try it in your browser, solve practice problems, and search the docs.">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="brand" href="#playground">
+      <span class="brand-mark">»</span> Plain
+    </a>
+    <nav class="tabs" id="tabs">
+      <a href="#playground" data-tab="playground" class="tab active">Playground</a>
+      <a href="#practice" data-tab="practice" class="tab">Practice</a>
+      <a href="#docs" data-tab="docs" class="tab">Docs</a>
+    </nav>
+    <a class="gh-link" href="https://github.com/TylerJForstrom/Plain" target="_blank" rel="noopener">GitHub ↗</a>
+  </div>
+</header>
+
+<!-- ======================= PLAYGROUND ======================= -->
+<main id="tab-playground" class="tab-panel active">
+  <section class="hero">
+    <h1>Code that reads like English.</h1>
+    <p>Plain sits between block coding and Python — real typed-out programs, in words you already know. Runs right here in your browser.</p>
+  </section>
+
+  <div class="playground">
+    <div class="pane editor-pane">
+      <div class="pane-bar">
+        <select id="example-picker" title="Load an example">
+          <option value="">Load an example…</option>
+        </select>
+        <label class="trace-toggle" title="Narrate every line as it runs">
+          <input type="checkbox" id="trace-check"> Explain each step
+        </label>
+        <div class="bar-spacer"></div>
+        <button id="run-btn" class="btn btn-run" disabled>Loading engine…</button>
+        <button id="stop-btn" class="btn btn-stop" hidden>Stop</button>
+      </div>
+      <div id="editor-host"></div>
+    </div>
+    <div class="pane output-pane">
+      <div class="pane-bar">
+        <span class="pane-title">Output</span>
+        <div class="bar-spacer"></div>
+        <button id="clear-btn" class="btn btn-ghost">Clear</button>
+      </div>
+      <pre id="output"><span class="out-dim">The Plain engine is loading (first visit takes a few seconds)…</span></pre>
+    </div>
+  </div>
+</main>
+
+<!-- ======================= PRACTICE ======================= -->
+<main id="tab-practice" class="tab-panel">
+  <section class="hero hero-small">
+    <h1>Practice problems</h1>
+    <p>Real interview-style problems, solved in Plain. Start from the starter code, peek at the hint if you're stuck, then compare with the explained solution.</p>
+  </section>
+  <div id="problem-list" class="problem-grid"></div>
+  <div id="problem-detail" class="problem-detail" hidden></div>
+</main>
+
+<!-- ======================= DOCS ======================= -->
+<main id="tab-docs" class="tab-panel">
+  <div class="docs-layout">
+    <aside class="docs-side">
+      <input type="search" id="docs-search" placeholder="Search the docs… (e.g. sort, lookup, loop)" autocomplete="off">
+      <nav id="docs-nav"></nav>
+    </aside>
+    <div class="docs-main" id="docs-main"></div>
+    <aside class="chat-panel">
+      <div class="chat-head">
+        <span class="chat-dot"></span> Ask about Plain
+      </div>
+      <div class="chat-log" id="chat-log">
+        <div class="chat-msg bot">Hi! I'm the docs assistant. Ask me things like <em>"how do I make a lookup?"</em> or <em>"how do I sort by something?"</em> and I'll find the right part of the documentation.</div>
+      </div>
+      <form class="chat-form" id="chat-form">
+        <input type="text" id="chat-input" placeholder="Ask a question…" autocomplete="off">
+        <button type="submit" class="btn btn-run">Ask</button>
+      </form>
+    </aside>
+  </div>
+</main>
+
+<footer class="site-footer">
+  Plain runs entirely in your browser — nothing you type leaves this page.
+  <a href="https://github.com/TylerJForstrom/Plain" target="_blank" rel="noopener">Source on GitHub</a>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="plain-mode.js"></script>
+<script src="docs-data.js"></script>
+<script src="problems-data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+[build]
+  publish = "web"
+  # The playground runs the real interpreter: copy it into the site at build time
+  command = "cp plain.py web/plain.py"

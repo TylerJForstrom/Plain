@@ -1,3 +1,5 @@
 # scratch output written by demo.plain
 _demo_out.txt
 __pycache__/
+# copied into the site by the Netlify build (see netlify.toml)
+web/plain.py
