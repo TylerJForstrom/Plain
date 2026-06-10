@@ -1,0 +1,23 @@
+# LeetCode #121: Best Time to Buy and Sell Stock
+# Given prices day by day, find the biggest profit from buying on one
+# day and selling on a later day.
+#
+# One pass: remember the cheapest price so far; at each day, check how
+# much you'd make selling now.
+
+to best_profit with prices
+    set cheapest to prices[1]
+    set best to 0
+    for each price in prices
+        if price < cheapest then
+            set cheapest to price
+        otherwise if price - cheapest > best then
+            set best to price - cheapest
+        end
+    end
+    give back best
+end
+
+expect best_profit([7, 1, 5, 3, 6, 4]) to equal 5
+expect best_profit([7, 6, 4, 3, 1]) to equal 0
+print "Best time to buy and sell works!"

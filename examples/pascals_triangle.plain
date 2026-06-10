@@ -1,0 +1,23 @@
+# LeetCode #118: Pascal's Triangle
+# Each row starts and ends with 1; every other number is the sum of
+# the two numbers above it.
+
+to pascal with row_count
+    set triangle to []
+    for each r from 1 to row_count
+        set row to []
+        for each c from 1 to r
+            if c == 1 or c == r then
+                add 1 to row
+            otherwise
+                set above to triangle[r - 1]
+                add above[c - 1] + above[c] to row
+            end
+        end
+        add row to triangle
+    end
+    give back triangle
+end
+
+expect pascal(5) to equal [[1], [1, 1], [1, 2, 1], [1, 3, 3, 1], [1, 4, 6, 4, 1]]
+print "Pascal's triangle works!"

@@ -1,0 +1,45 @@
+# LeetCode #200: Number of Islands  (a "medium" problem!)
+# A map of "1" (land) and "0" (water). Land connected up/down/left/right
+# forms one island. Count the islands.
+#
+# Plan: scan every cell with one combined loop. When we find land,
+# count it as a new island and "sink" all land connected to it
+# (flood fill) so it never gets counted again.
+
+to sink with map and r and c
+    if r < 1 or r > count of map then
+        give back 0
+    end
+    set row to map[r]
+    if c < 1 or c > count of row then
+        give back 0
+    end
+    if map[r][c] != "1" then
+        give back 0
+    end
+    map[r][c] = "0"
+    sink(map, r - 1, c)
+    sink(map, r + 1, c)
+    sink(map, r, c - 1)
+    sink(map, r, c + 1)
+    give back 0
+end
+
+to count_islands with map
+    set islands to 0
+    for each r from 1 to count of map and c from 1 to count of map[r]
+        if map[r][c] == "1" then
+            islands += 1
+            sink(map, r, c)
+        end
+    end
+    give back islands
+end
+
+set ocean to [["1", "1", "0", "0"],
+              ["1", "1", "0", "0"],
+              ["0", "0", "1", "0"],
+              ["0", "0", "0", "1"]]
+
+expect count_islands(ocean) to equal 3
+print "Number of islands works!"
