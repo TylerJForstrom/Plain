@@ -103,3 +103,50 @@ set pick to random in names
 print "Random name: [pick]"
 print "Random number 1 to 100:"
 print random from 1 to 100
+
+# --- Number ranges (no list needed) ---
+print "Counting 1 to 5:"
+for each n from 1 to 5
+    print n
+end
+
+print "Even numbers 2 to 10:"
+for each n from 2 to 10 by 2
+    print n
+end
+
+# --- Math built-ins ---
+print "sqrt(81) ="
+print square root of 81
+print "abs(-7) ="
+set diff to 0 minus 7
+print absolute value of diff
+print "round(4.6) ="
+print round 4.6
+
+# --- Divisibility ---
+print "Multiples of 3 between 1 and 15:"
+for each n from 1 to 15
+    if n is divisible by 3 then
+        print n
+    end
+end
+
+# --- Split / join ---
+set csv to "red,green,blue"
+set colors to split csv by ","
+print "Parsed colors:"
+for each c in colors
+    print c
+end
+print "Re-joined:"
+print join colors with " | "
+
+# --- File I/O ---
+set rows to list of "line one" and "line two" and "line three"
+save rows to "_demo_out.txt"
+read lines from "_demo_out.txt" into loaded
+print "Loaded back:"
+for each ln in loaded
+    print ln
+end

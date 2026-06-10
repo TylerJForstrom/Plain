@@ -5,6 +5,7 @@ Run:  python plain.py program.plain
 """
 
 import difflib
+import math
 import random
 import re
 import sys
@@ -26,8 +27,10 @@ KEYWORDS = {
     "remove", "sort", "reverse",
     "give", "back", "call", "with",
     "wait", "seconds",
+    "read", "lines", "into", "save",
     # conditions
     "is", "not", "equal", "greater", "less", "than", "one", "between",
+    "divisible",
     # arithmetic
     "plus", "minus", "multiplied", "divided", "by",
     # values & list ops
@@ -37,6 +40,8 @@ KEYWORDS = {
     "count", "length", "sum", "average", "biggest", "smallest",
     "random", "first", "last", "uppercase", "lowercase",
     "only", "the", "ones", "where", "it",
+    "square", "root", "absolute", "value", "round",
+    "split", "join",
 }
 
 TOKEN_RE = re.compile(
@@ -259,6 +264,16 @@ def parse_stmt(p):
         else:
             raise SyntaxError("Expected 'each' or 'every other' after 'for'")
         name = p.expect("ID")[1]
+        if p.accept("KW", "from"):
+            start = parse_expr(p)
+            p.expect("KW", "to")
+            stop = parse_expr(p)
+            step_expr = ("num", 1)
+            if p.accept("KW", "by"):
+                step_expr = parse_expr(p)
+            body = parse_block(p, ["end"])
+            p.expect("KW", "end")
+            return ("rangefor", name, start, stop, step_expr, body)
         p.expect("KW", "in")
         seq = parse_expr(p)
         backwards = bool(p.accept("KW", "going"))
@@ -267,6 +282,21 @@ def parse_stmt(p):
         body = parse_block(p, ["end"])
         p.expect("KW", "end")
         return ("for", name, seq, step, backwards, body)
+
+    if tok == ("KW", "read"):
+        p.eat()
+        p.expect("KW", "lines")
+        p.expect("KW", "from")
+        path = parse_expr(p)
+        p.expect("KW", "into")
+        return ("readlines", p.expect("ID")[1], path)
+
+    if tok == ("KW", "save"):
+        p.eat()
+        val = parse_expr(p)
+        p.expect("KW", "to")
+        path = parse_expr(p)
+        return ("save", val, path)
 
     raise SyntaxError(suggest(f"I don't understand '{tok[1] or tok[0]}'", tok))
 
@@ -305,6 +335,9 @@ def parse_cmp(p):
         p.expect("KW", "and")
         hi = parse_atom(p)
         node = ("between", left, lo, hi)
+    elif p.accept("KW", "divisible"):
+        p.expect("KW", "by")
+        node = ("divisible", left, parse_atom(p))
     else:
         raise SyntaxError(
             "Expected 'equal to', 'greater/less than', 'one of', or 'between'"
@@ -380,6 +413,31 @@ def parse_atom(p):
             return ("call", "randnum", [a, b])
         p.expect("KW", "in")
         return ("call", "randitem", [parse_atom(p)])
+
+    # math
+    if p.accept("KW", "square"):
+        p.expect("KW", "root")
+        p.expect("KW", "of")
+        return ("call", "sqrt", [parse_atom(p)])
+    if p.accept("KW", "absolute"):
+        p.expect("KW", "value")
+        p.expect("KW", "of")
+        return ("call", "abs", [parse_atom(p)])
+    if p.accept("KW", "round"):
+        p.accept("KW", "of")  # optional 'of'
+        return ("call", "round", [parse_atom(p)])
+
+    # string split / join
+    if p.accept("KW", "split"):
+        s = parse_atom(p)
+        p.expect("KW", "by")
+        sep = parse_atom(p)
+        return ("call", "split", [s, sep])
+    if p.accept("KW", "join"):
+        lst = parse_atom(p)
+        p.expect("KW", "with")
+        sep = parse_atom(p)
+        return ("call", "join", [lst, sep])
 
     # filter: "only the ones in LIST where COND"
     if p.accept("KW", "only"):
@@ -477,6 +535,8 @@ def evaluate(node, env):
         lo = evaluate(node[2], env)
         hi = evaluate(node[3], env)
         return lo <= v <= hi
+    if t == "divisible":
+        return evaluate(node[1], env) % evaluate(node[2], env) == 0
     if t == "logic":
         _, op, a, b = node
         if op == "not": return not evaluate(a, env)
@@ -516,6 +576,11 @@ def evaluate(node, env):
         if name == "lowercase": return str(x).lower()
         if name == "randnum":   return random.randint(int(vals[0]), int(vals[1]))
         if name == "randitem":  return random.choice(x)
+        if name == "sqrt":      return math.sqrt(x)
+        if name == "abs":       return abs(x)
+        if name == "round":     return round(x)
+        if name == "split":     return str(vals[0]).split(vals[1])
+        if name == "join":      return str(vals[1]).join(to_str(v) for v in vals[0])
     if t == "userfn":
         return call_user_fn(node[1], [evaluate(a, env) for a in node[2]], env)
     raise RuntimeError(f"Cannot evaluate {node}")
@@ -623,6 +688,35 @@ def run(node, env):
                 continue
             except StopLoop:
                 break
+    elif t == "rangefor":
+        _, name, start_n, stop_n, step_n, body = node
+        start = int(evaluate(start_n, env))
+        stop = int(evaluate(stop_n, env))
+        step = int(evaluate(step_n, env))
+        direction = 1 if stop >= start else -1
+        v = start
+        while (direction > 0 and v <= stop) or (direction < 0 and v >= stop):
+            env[name] = v
+            try:
+                for s in body:
+                    run(s, env)
+            except SkipLoop:
+                pass
+            except StopLoop:
+                break
+            v += direction * step
+    elif t == "readlines":
+        path = evaluate(node[2], env)
+        with open(path, "r", encoding="utf-8") as f:
+            env[node[1]] = [line.rstrip("\n") for line in f]
+    elif t == "save":
+        val = evaluate(node[1], env)
+        path = evaluate(node[2], env)
+        with open(path, "w", encoding="utf-8") as f:
+            if isinstance(val, list):
+                f.write("\n".join(to_str(x) for x in val))
+            else:
+                f.write(to_str(val))
     elif t == "def":
         _, name, params, body = node
         env.setdefault("__fns__", {})[name] = (params, body)
@@ -653,9 +747,43 @@ def coerce(s):
 # 4. ENTRY POINT
 # ============================================================
 
+def repl():
+    print("Plain REPL. Ctrl+C or Ctrl+Z then Enter to quit.")
+    env = {}
+    buf = ""
+    prompt = ">>> "
+    while True:
+        try:
+            line = input(prompt)
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        buf += line + "\n"
+        if not buf.strip():
+            buf = ""
+            continue
+        try:
+            ast = parse(tokenize(buf))
+        except SyntaxError as e:
+            msg = str(e)
+            if "Reached end of file" in msg or "'EOF'" in msg:
+                prompt = "... "
+                continue
+            print(f"Oops: {e}")
+            buf = ""
+            prompt = ">>> "
+            continue
+        prompt = ">>> "
+        try:
+            run(ast, env)
+        except (NameError, RuntimeError, ZeroDivisionError) as e:
+            print(f"Oops: {e}")
+        buf = ""
+
+
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python plain.py <file.plain>")
+        repl()
         return
     with open(sys.argv[1], "r", encoding="utf-8") as f:
         src = f.read()
