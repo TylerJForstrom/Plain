@@ -97,16 +97,22 @@ print the first 2 of name       # "Ad"
 print name at 1                 # "A"  (positions start at 1)
 set parts to split "a,b,c" by ","
 print join parts with " - "
+print replace "l" with "w" in "hello"   # "hewwo"
+print trim of "  hi  "                  # "hi"
+print count of "s" in "mississippi"     # 4
+print items 2 to 4 of "plainly"         # "lai"
 ```
 
 ### Lists
 
 ```
 set nums to list of 3 and 1 and 2      # or:  set nums to [3, 1, 2]
+set nums to numbers from 1 to 10       # a ready-made counting list
 add 5 to nums                   # append
 remove 1 from nums              # delete a value
 sort nums                       # smallest first
 sort nums backwards             # biggest first
+sort pairs by it[2]             # sort by any expression of 'it'
 reverse nums
 
 print nums at 2                 # or:  print nums[2]   (positions start at 1)
@@ -115,6 +121,8 @@ set item 2 of nums to 99        # or:  nums[2] = 99
 print position of 99 in nums    # where is it? (0 means not there)
 
 print count of nums
+print count of 2 in nums        # how many times 2 appears
+print items 2 to 4 of nums      # slice by positions
 print sum of nums
 print biggest in nums
 print smallest in nums
@@ -151,6 +159,7 @@ LeetCode solutions (Python calls it a dictionary).
 set ages to empty lookup        # or:  set ages to {}
 set ages at "amy" to 30         # or:  ages["amy"] = 30
 print ages at "amy"             # or:  print ages["amy"]
+add 1 to ages at "amy"          # or:  ages["amy"] += 1
 remove "amy" from ages
 
 set table to lookup of "x" being 1 and "y" being 2
@@ -162,6 +171,18 @@ print count of table
 if ages has "amy" then
     print "found her"
 end
+```
+
+Counting things — the trick behind many fast solutions — is two lines,
+because adding to a missing key starts it at 0:
+
+```
+set tally to {}
+for each w in split text by " "
+    add 1 to tally at w
+end
+set ranked to keys of tally
+sort ranked by tally at it backwards    # most common first
 ```
 
 ### Grids (lists inside lists)
@@ -209,6 +230,8 @@ if seen has n then ... end
 if word does not contain "z" then ... end    # also: does not have /
 if done then ... end                         #   start with / end with
 if not done then ... end
+if answer is a number then ... end           # also: is text / is a list /
+if answer is not text then ... end           #   is a lookup
 ```
 
 Combine with `and` / `or` (parentheses welcome), branch with `otherwise`,
@@ -238,6 +261,14 @@ forever ... end
 ```
 
 Inside any loop: `stop` breaks out, `skip` jumps to the next round.
+
+Need to know where you are? Ask for the position (counts 1, 2, 3, ...):
+
+```
+for each ch at position i in letters of word
+    print "letter [i] is [ch]"
+end
+```
 
 **Nested loops in one line** — something even Python can't do this simply.
 Join loops with `and`; one `end` closes them all:
@@ -294,13 +325,30 @@ expect two_sum([2, 7, 11, 15], 9) to equal [1, 2]
 Prints `OK` when right, `FAIL` (with both values) when wrong, and the
 program reports failure to the system so it works in test scripts.
 
+### When things might fail
+
+Wrap risky steps in `try`; if anything goes wrong the `otherwise` part
+runs, and `error` holds the message:
+
+```
+ask answer with "Type a number:"
+try
+    print 100 / answer
+otherwise
+    print "That didn't work: [error]"
+end
+```
+
 ### Asking, waiting, files
 
 ```
 ask favorite                          # read typed input into a variable
+ask name with "What is your name?"    # ask with your own prompt
 wait 2 seconds
 save mylist to "out.txt"
 read lines from "data.txt" into rows
+print arguments                       # values typed after the program name
+put 5 into x                          # another way to say: set x to 5
 exit                                  # end the program right away
 ```
 
