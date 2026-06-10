@@ -1080,6 +1080,10 @@ class PlainRuntimeError(Exception):
     """A runtime problem, already labeled with the line it happened on."""
 
 
+# --trace / --explain mode: narrate each line as it runs.
+TRACE = {"on": False, "src": []}
+
+
 def to_str(v):
     if isinstance(v, bool):
         return "true" if v else "false"
@@ -1388,6 +1392,10 @@ def run(node, env):
             run(s, env)
     elif t == "stmt":
         # Label any runtime problem with the line it happened on.
+        if TRACE["on"]:
+            ln = node[1]
+            text = TRACE["src"][ln - 1].strip() if 0 < ln <= len(TRACE["src"]) else ""
+            print(f"[line {ln}] {text}")
         try:
             run(node[2], env)
         except PlainRuntimeError:
@@ -1395,6 +1403,15 @@ def run(node, env):
         except (NameError, RuntimeError, ValueError, TypeError,
                 ZeroDivisionError, IndexError, KeyError) as e:
             raise PlainRuntimeError(f"Line {node[1]}: {e}") from None
+        if TRACE["on"]:
+            inner = node[2]
+            if inner[0] in ("set", "add", "sub") and inner[1] in env:
+                print(f"          ... {inner[1]} is now {to_str(env[inner[1]])}")
+            elif inner[0] == "setmulti":
+                for n in inner[1]:
+                    print(f"          ... {n} is now {to_str(env.get(n))}")
+            elif inner[0] in ("setpath", "addpath", "subpath") and inner[1] in env:
+                print(f"          ... {inner[1]} is now {to_str(env[inner[1]])}")
     elif t == "set":
         env[node[1]] = evaluate(node[2], env)
     elif t == "setmulti":
@@ -1764,11 +1781,17 @@ def main():
             stream.reconfigure(errors="replace")
         except AttributeError:
             pass
+    # python plain.py program.plain --trace  narrates every line as it runs
+    for flag in ("--trace", "--explain"):
+        if flag in sys.argv:
+            TRACE["on"] = True
+            sys.argv.remove(flag)
     if len(sys.argv) < 2:
         repl()
         return
     with open(sys.argv[1], "r", encoding="utf-8-sig") as f:
         src = f.read()
+    TRACE["src"] = src.splitlines()
     env = {}
     try:
         run(parse(tokenize(src)), env)
