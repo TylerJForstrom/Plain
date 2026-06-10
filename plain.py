@@ -1086,6 +1086,20 @@ def add_vals(a, b):
     return a + b
 
 
+def kind_name(v):
+    if isinstance(v, bool):
+        return "a true/false value"
+    if isinstance(v, (int, float)):
+        return "a number"
+    if isinstance(v, str):
+        return "text"
+    if isinstance(v, list):
+        return "a list"
+    if isinstance(v, dict):
+        return "a lookup"
+    return "that"
+
+
 def path_get(env, name, keys):
     if name not in env:
         raise NameError(f"You haven't set '{name}' yet.")
@@ -1134,24 +1148,36 @@ def evaluate(node, env):
     if t == "bin":
         _, op, a, b = node
         av, bv = evaluate(a, env), evaluate(b, env)
-        if op == "+": return add_vals(av, bv)
-        if op == "-": return av - bv
-        if op == "*": return av * bv
-        if op == "/":
-            if bv == 0:
-                raise RuntimeError("You can't divide by zero.")
-            return av / bv
-        if op == "//":
-            if bv == 0:
-                raise RuntimeError("You can't divide by zero.")
-            return av // bv
-        if op == "**":
-            return av ** bv
+        try:
+            if op == "+": return add_vals(av, bv)
+            if op == "-": return av - bv
+            if op == "*": return av * bv
+            if op == "/":
+                if bv == 0:
+                    raise RuntimeError("You can't divide by zero.")
+                return av / bv
+            if op == "//":
+                if bv == 0:
+                    raise RuntimeError("You can't divide by zero.")
+                return av // bv
+            if op == "**":
+                return av ** bv
+        except TypeError:
+            shown = "^" if op == "**" else op
+            tip = (" Tip: 'value of x' turns text into a number."
+                   if isinstance(av, str) or isinstance(bv, str) else "")
+            raise RuntimeError(
+                f"You can't use '{shown}' with {kind_name(av)} and "
+                f"{kind_name(bv)}.{tip}") from None
     if t == "cmp":
         _, op, a, b = node
         av, bv = evaluate(a, env), evaluate(b, env)
-        return {"eq": av == bv, "ne": av != bv, "gt": av > bv,
-                "lt": av < bv, "ge": av >= bv, "le": av <= bv}[op]
+        try:
+            return {"eq": av == bv, "ne": av != bv, "gt": av > bv,
+                    "lt": av < bv, "ge": av >= bv, "le": av <= bv}[op]
+        except TypeError:
+            raise RuntimeError(
+                f"You can't compare {kind_name(av)} with {kind_name(bv)}.") from None
     if t == "index":
         return index_get(evaluate(node[1], env), evaluate(node[2], env))
     if t == "dict":
