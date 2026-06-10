@@ -1,0 +1,40 @@
+# Practical Plain demo
+
+set numbers to list of 4 and 1 and 7 and 3 and 9 and 2
+
+print "All numbers:"
+for each n in numbers
+    print n
+end
+
+print "Every other one:"
+for every other n in numbers
+    print n
+end
+
+print "Backwards:"
+for each n in numbers going backwards
+    print n
+end
+
+print "Stats:"
+print count of numbers
+print sum of numbers
+print biggest in numbers
+print smallest in numbers
+print average of numbers
+
+# Lists of strings work the same way
+set names to list of "Alice" and "Bob" and "Carol"
+add "Dave" to names
+
+print "Everyone:"
+for each name in names
+    print name
+end
+
+print "Random pick:"
+print random in names
+
+print "Random number 1 to 100:"
+print random from 1 to 100
