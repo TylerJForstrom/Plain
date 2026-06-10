@@ -216,6 +216,14 @@ def parse_stmt_inner(p):
                 p.expect("KW", "to")
             return ("setpath", name, keys, parse_expr(p))
         name = p.expect("ID")[1]
+        # set lo and hi to ... - unpack a list of values into several names
+        if p.accept("KW", "and"):
+            names = [name, p.expect("ID")[1]]
+            while p.accept("KW", "and"):
+                names.append(p.expect("ID")[1])
+            if not p.accept("OP", "="):
+                p.expect("KW", "to")
+            return ("setmulti", names, parse_expr(p))
         # set NAME at KEY to VALUE / set NAME[KEY] to VALUE  (lookups and lists)
         keys = []
         while True:
@@ -362,7 +370,14 @@ def parse_stmt_inner(p):
     if tok == ("KW", "give"):
         p.eat()
         p.expect("KW", "back")
-        return ("return", parse_expr(p))
+        e = parse_expr(p)
+        # give back lo and hi  - several values come back as a list
+        if p.accept("KW", "and"):
+            items = [e, parse_expr(p)]
+            while p.accept("KW", "and"):
+                items.append(parse_expr(p))
+            return ("return", ("list", items))
+        return ("return", e)
 
     if tok == ("KW", "call"):
         # Function call as a standalone statement: just evaluate and discard.
@@ -1370,6 +1385,19 @@ def run(node, env):
             raise PlainRuntimeError(f"Line {node[1]}: {e}") from None
     elif t == "set":
         env[node[1]] = evaluate(node[2], env)
+    elif t == "setmulti":
+        _, names, e = node
+        v = evaluate(e, env)
+        if not isinstance(v, list):
+            raise RuntimeError(
+                f"To fill {len(names)} names at once, the value must be a "
+                f"list, but this is {kind_name(v)}.")
+        if len(v) != len(names):
+            raise RuntimeError(
+                f"Expected {len(names)} values for "
+                f"{', '.join(names)} but the list has {len(v)}.")
+        for n, val in zip(names, v):
+            env[n] = val
     elif t == "setpath":
         _, name, key_nodes, val_n = node
         if name not in env:
