@@ -23,6 +23,25 @@ end
 
 That's a real, working solution to LeetCode #1 (Two Sum).
 
+And when you're ready for symbols, Plain accepts those too — every word
+has an operator twin, and you can mix them freely:
+
+```
+to two_sum with nums and target
+    set seen to {}
+    set i to 0
+    for each n in nums
+        i += 1
+        set need to target - n
+        if seen has need then
+            give back [seen[need], i]
+        end
+        seen[n] = i
+    end
+    give back []
+end
+```
+
 ## Running Plain
 
 You need Python installed. Then:
@@ -33,26 +52,38 @@ python plain.py                   # interactive mode (type code, see results)
 python plain.py tests.plain       # run the language's own test suite
 ```
 
-The `examples/` folder has solved LeetCode problems to learn from:
-two_sum, binary_search, fizzbuzz, palindrome, valid_anagram,
-contains_duplicate, max_subarray, and climbing_stairs.
+The `examples/` folder has solved LeetCode problems to learn from, from
+easy (fizzbuzz, two_sum, palindrome) up to medium (number_of_islands).
 
 ## The basics
 
 ### Variables and math
 
 ```
-set price to 10
+set price to 10                 # or:  price = 10
 set tax to price multiplied by 0.08
-add 5 to price
-subtract 2 from price
+add 5 to price                  # or:  price += 5
+subtract 2 from price           # or:  price -= 2
 print price
 ```
 
-Math words: `plus`, `minus`, `multiplied by`, `divided by`,
-`remainder of A divided by B`, `square root of`, `absolute value of`,
-`round`, `floor of`, `middle of A and B` (whole-number midpoint),
-`negative 5`, `random from 1 to 100`.
+Math, in words or symbols — use whichever you like:
+
+| words                          | symbols  |
+| ------------------------------ | -------- |
+| `plus`                         | `+`      |
+| `minus`                        | `-`      |
+| `multiplied by`                | `*`      |
+| `divided by`                   | `/`      |
+| `remainder of A divided by B`  | `A % B`  |
+| —                              | `A // B` (divide, round down) |
+| —                              | `A ^ B` (power), `N squared`  |
+
+Plus: `square root of`, `absolute value of`, `round`, `floor of`,
+`middle of A and B` (whole-number midpoint — handy for binary search),
+`negative 5` or `-5`, `random from 1 to 100`.
+
+Parentheses group things, just like in math class: `set m to (low + high) / 2`.
 
 ### Printing and text
 
@@ -70,16 +101,16 @@ print join parts with " - "
 ### Lists
 
 ```
-set nums to list of 3 and 1 and 2
+set nums to list of 3 and 1 and 2      # or:  set nums to [3, 1, 2]
 add 5 to nums                   # append
 remove 1 from nums              # delete a value
 sort nums                       # smallest first
 sort nums backwards             # biggest first
 reverse nums
 
-print nums at 2                 # read position 2 (positions start at 1)
+print nums at 2                 # or:  print nums[2]   (positions start at 1)
 print item 2 of nums            # same thing, different words
-set item 2 of nums to 99        # replace position 2
+set item 2 of nums to 99        # or:  nums[2] = 99
 print position of 99 in nums    # where is it? (0 means not there)
 
 print count of nums
@@ -96,7 +127,7 @@ print the last 2 of nums
 Transform or filter a whole list in one line:
 
 ```
-set doubled to each n in nums as n multiplied by 2
+set doubled to each n in nums as n * 2
 set big to only the ones in nums where it is greater than 10
 ```
 
@@ -106,12 +137,13 @@ A lookup remembers a value for each key — the tool behind most fast
 LeetCode solutions (Python calls it a dictionary).
 
 ```
-set ages to empty lookup
-set ages at "amy" to 30
-print ages at "amy"
+set ages to empty lookup        # or:  set ages to {}
+set ages at "amy" to 30         # or:  ages["amy"] = 30
+print ages at "amy"             # or:  print ages["amy"]
 remove "amy" from ages
 
 set table to lookup of "x" being 1 and "y" being 2
+set table to {"x": 1, "y": 2}   # same thing in symbols
 print keys of table             # [x, y]
 print values of table           # [1, 2]
 print count of table
@@ -121,30 +153,53 @@ if ages has "amy" then
 end
 ```
 
-### Conditions
+### Grids (lists inside lists)
+
+For 2D problems — boards, mazes, matrices — Plain is simpler than Python:
 
 ```
-if score is equal to 100 then ... end
-if score is not equal to 0 then ... end
-if score is greater than 50 then ... end
-if score is less than 50 then ... end
-if score is at least 90 then ... end          # >=
-if score is at most 100 then ... end          # <=
+set board to grid of 3 by 4 filled with 0    # 3 rows, 4 columns, all 0
+board[2][3] = "X"                            # row 2, column 3
+print board[2][3]
+print count of board                         # how many rows
+print count of board[1]                      # how many columns
+
+set tiny to [[1, 2], [3, 4]]                 # write one out directly
+set item 1 of item 2 of tiny to 9            # the word way: tiny[2][1] = 9
+```
+
+Long lists can be split across lines — newlines inside `[ ]`, `{ }`,
+and `( )` don't end the statement.
+
+### Conditions
+
+Words or symbols, your choice:
+
+```
+if score is equal to 100 then ... end        # or:  if score == 100 then
+if score is not equal to 0 then ... end      # or:  if score != 0 then
+if score is greater than 50 then ... end     # or:  if score > 50 then
+if score is less than 50 then ... end        # or:  if score < 50 then
+if score is at least 90 then ... end         # or:  if score >= 90 then
+if score is at most 100 then ... end         # or:  if score <= 100 then
 if score is between 1 and 10 then ... end
 if n is divisible by 3 then ... end
 if n is positive then ... end
 if n is negative then ... end
 if bag is empty then ... end
-if color is one of list of "red" and "blue" then ... end
+if color is one of ["red", "blue"] then ... end
 if "amy" is in ages then ... end
 if word contains "ell" then ... end
 if word starts with "he" then ... end
 if word ends with "lo" then ... end
-if ages has "amy" then ... end
+if seen has n then ... end
+if word does not contain "z" then ... end    # also: does not have /
+if done then ... end                         #   start with / end with
+if not done then ... end
 ```
 
-Combine with `and` / `or`, branch with `otherwise`, and chain checks
-with `otherwise if` (one single `end` closes the whole chain):
+Combine with `and` / `or` (parentheses welcome), branch with `otherwise`,
+and chain checks with `otherwise if` — one single `end` closes the chain:
 
 ```
 if grade is at least 90 then
@@ -165,11 +220,27 @@ for each n from 0 to 100 by 5 ... end
 for each item in mylist ... end
 for each item in mylist going backwards ... end
 for every other item in mylist ... end
-while total is less than 100 ... end
+while total is less than 100 ... end         # or:  while total < 100
 forever ... end
 ```
 
 Inside any loop: `stop` breaks out, `skip` jumps to the next round.
+
+**Nested loops in one line** — something even Python can't do this simply.
+Join loops with `and`; one `end` closes them all:
+
+```
+for each r from 1 to 3 and c from 1 to 3
+    print "row [r], column [c]"
+end
+
+for each row in board and cell in row       # the inner loop can use
+    print cell                               # the outer loop's variable
+end
+```
+
+In a combined loop, `skip` moves to the next combination and `stop`
+leaves the whole thing.
 
 ### Functions
 
@@ -184,6 +255,7 @@ end
 
 call greet with "World"
 set total to call add_pair with 3 and 4
+set total to add_pair(3, 4)         # symbol style works too
 ```
 
 Functions can call themselves (recursion):
@@ -193,8 +265,7 @@ to fact with n
     if n is at most 1 then
         give back 1
     end
-    set m to n minus 1
-    give back n multiplied by call fact with m
+    give back n * fact(n - 1)
 end
 ```
 
@@ -204,10 +275,11 @@ end
 against a problem's examples:
 
 ```
-expect call two_sum with nums and 9 to equal list of 1 and 2
+expect two_sum([2, 7, 11, 15], 9) to equal [1, 2]
 ```
 
-Prints `OK` when right, `FAIL` (with both values) when wrong.
+Prints `OK` when right, `FAIL` (with both values) when wrong, and the
+program reports failure to the system so it works in test scripts.
 
 ### Asking, waiting, files
 
@@ -230,19 +302,14 @@ Oops: Line 2: Position 7 is outside the list (it has 3 items).
 Oops: Line 4: You can't divide by zero.
 ```
 
-## Three habits that keep Plain plain
+## Tips
 
-1. **One step per line.** Plain has no parentheses, so don't stack math
-   into one line. Instead of guessing how `round of x divided by 2`
-   groups, write `set half to x divided by 2` then `round half`.
-   Word-builtins like `count of` and `floor of` grab only the very next
-   value.
-2. **Put lists in variables before calling functions.** Write
-   `set nums to list of 1 and 2` then `call f with nums and 9` — if you
-   inline the list, the `and`s blur together.
-3. **Positions start at 1.** The first item of a list is `item 1`,
-   like counting in real life.
-
-Words that belong to the language (like `set`, `count`, `item`, `list`,
-`value`) can't be used as variable names — if you hit a confusing error,
-try a more specific name like `my_item` or `total_count`.
+1. **Positions start at 1.** The first item of a list is `item 1` or
+   `nums[1]`, like counting in real life.
+2. **Use parentheses when math gets long.** Word-builtins like
+   `count of` and `floor of` grab only the very next value, so write
+   `round of (x / 2)` when you mean the whole thing.
+3. **Words that belong to the language** (like `set`, `count`, `item`,
+   `list`, `value`) can't be used as variable names. If you hit a
+   confusing error, try a more specific name like `my_item` or
+   `total_count`.
