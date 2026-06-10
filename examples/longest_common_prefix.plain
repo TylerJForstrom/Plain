@@ -1,0 +1,30 @@
+# LeetCode #14: Longest Common Prefix
+# Find the longest starting text that every word shares.
+# "flower", "flow", "flight" all start with "fl".
+
+to common_prefix with words
+    if words is empty then
+        give back ""
+    end
+    set shortest to first of words
+    for each w in words
+        if count of w < count of shortest then
+            set shortest to w
+        end
+    end
+    set prefix to ""
+    for each ch at position i in letters of shortest
+        for each w in words
+            if w[i] != ch then
+                give back prefix
+            end
+        end
+        prefix += ch
+    end
+    give back prefix
+end
+
+expect common_prefix(["flower", "flow", "flight"]) to equal "fl"
+expect common_prefix(["dog", "racecar", "car"]) to equal ""
+expect common_prefix(["same", "same"]) to equal "same"
+print "Longest common prefix works!"

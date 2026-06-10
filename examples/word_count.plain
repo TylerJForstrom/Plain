@@ -1,0 +1,23 @@
+# Word frequency - the heart of LeetCode #347 (Top K Frequent Elements)
+# Count how often each word appears, then list the most common first.
+
+set text to "the cat and the dog and the bird"
+
+set tally to {}
+for each w in split text by " "
+    add 1 to tally at w
+end
+expect tally["the"] to equal 3
+expect tally["and"] to equal 2
+expect tally["cat"] to equal 1
+
+set ranked to keys of tally
+sort ranked by tally at it backwards
+expect first of ranked to equal "the"
+expect the first 2 of ranked to equal ["the", "and"]
+
+print "Word ranking:"
+for each w in ranked
+    set n to tally at w
+    print "  [w] appears [n] time(s)"
+end
