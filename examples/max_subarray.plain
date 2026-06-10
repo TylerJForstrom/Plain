@@ -1,0 +1,26 @@
+# LeetCode #53: Maximum Subarray
+# Find the biggest sum you can get from a run of numbers next to
+# each other in the list (Kadane's trick: keep a running sum, and
+# whenever it drops below zero, start fresh).
+
+to max_subarray with nums
+    set best to nums at 1
+    set current to 0
+    for each n in nums
+        add n to current
+        if current is greater than best then
+            set best to current
+        end
+        if current is negative then
+            set current to 0
+        end
+    end
+    give back best
+end
+
+set nums to list of negative 2 and 1 and negative 3 and 4 and negative 1 and 2 and 1 and negative 5 and 4
+expect call max_subarray with nums to equal 6
+
+set nums to list of negative 3 and negative 1 and negative 2
+expect call max_subarray with nums to equal negative 1
+print "Max subarray works!"

@@ -1,0 +1,29 @@
+# LeetCode #704: Binary Search
+# Find the position of a target in a sorted list, looking at the
+# middle and cutting the search area in half each time.
+# Gives back 0 if the target is not in the list.
+
+to search with nums and target
+    set low to 1
+    set high to count of nums
+    while low is at most high
+        set mid to middle of low and high
+        set guess to nums at mid
+        if guess is equal to target then
+            give back mid
+        otherwise if guess is less than target then
+            set low to mid plus 1
+        otherwise
+            set high to mid minus 1
+        end
+    end
+    give back 0
+end
+
+set nums to list of 1 and 3 and 5 and 7 and 9 and 11
+
+expect call search with nums and 7 to equal 4
+expect call search with nums and 1 to equal 1
+expect call search with nums and 11 to equal 6
+expect call search with nums and 8 to equal 0
+print "Binary search works!"

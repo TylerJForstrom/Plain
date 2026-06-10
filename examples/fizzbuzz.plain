@@ -1,0 +1,15 @@
+# LeetCode #412: Fizz Buzz
+# Count from 1 to 15. For multiples of 3 say "Fizz", multiples of 5
+# say "Buzz", multiples of both say "FizzBuzz".
+
+for each n from 1 to 15
+    if n is divisible by 15 then
+        print "FizzBuzz"
+    otherwise if n is divisible by 3 then
+        print "Fizz"
+    otherwise if n is divisible by 5 then
+        print "Buzz"
+    otherwise
+        print n
+    end
+end

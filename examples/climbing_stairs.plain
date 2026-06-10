@@ -1,0 +1,21 @@
+# LeetCode #70: Climbing Stairs
+# You climb a staircase taking 1 or 2 steps at a time. How many
+# different ways can you reach the top? (It's the Fibonacci pattern:
+# ways to reach step N = ways to reach N-1 plus ways to reach N-2.)
+
+to climb with steps
+    set a to 1
+    set b to 1
+    repeat steps minus 1 times
+        set c to a plus b
+        set a to b
+        set b to c
+    end
+    give back b
+end
+
+expect call climb with 2 to equal 2
+expect call climb with 3 to equal 3
+expect call climb with 5 to equal 8
+expect call climb with 10 to equal 89
+print "Climbing stairs works!"

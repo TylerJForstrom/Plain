@@ -47,9 +47,8 @@ print "Reversed:"
 print numbers
 
 # --- Aggregates ---
-print "Count: [count_n]"
 set count_n to count of numbers
-print count_n
+print "Count: [count_n]"
 print sum of numbers
 print biggest in numbers
 print average of numbers
@@ -150,3 +149,39 @@ print "Loaded back:"
 for each ln in loaded
     print ln
 end
+
+# --- More conditions: is empty, is in, is positive ---
+set bag to empty list
+if bag is empty then
+    say "bag is empty"
+end
+
+if "Alice" is in names then
+    say "Alice is in the list"
+end
+
+set temp to negative 10
+if temp is negative then
+    say "It is cold."
+end
+
+# --- Slicing ---
+set big to list of 10 and 20 and 30 and 40 and 50
+say "First 3:"
+say the first 3 of big
+say "Last 2:"
+say the last 2 of big
+
+# --- Map (transform every item) ---
+set doubled to each n in big as n multiplied by 2
+say "Doubled:"
+say doubled
+
+# --- Assertions for learning ---
+expect 2 plus 2 to equal 4
+expect count of big to equal 5
+expect call add_pair with 10 and 5 to equal 15
+
+# --- now (current time) ---
+set t to now
+say "Right now: [t]"

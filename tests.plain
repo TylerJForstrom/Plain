@@ -1,0 +1,206 @@
+# Plain language test suite
+# Run:  python plain.py tests.plain
+# Every line should print OK. Any FAIL means something is broken.
+
+# --- Arithmetic ---
+expect 2 plus 3 to equal 5
+expect 10 minus 4 to equal 6
+expect 3 multiplied by 4 to equal 12
+expect 10 divided by 4 to equal 2.5
+expect remainder of 10 divided by 3 to equal 1
+expect remainder of 9 divided by 3 to equal 0
+expect floor of 3.9 to equal 3
+expect middle of 1 and 10 to equal 5
+expect middle of 1 and 6 to equal 3
+expect square root of 81 to equal 9
+expect round 4.6 to equal 5
+expect 2 plus 3 multiplied by 4 to equal 14
+
+set debt to negative 7
+expect absolute value of debt to equal 7
+
+# --- Lists ---
+set nums to list of 3 and 1 and 2
+expect count of nums to equal 3
+expect sum of nums to equal 6
+expect biggest in nums to equal 3
+expect smallest in nums to equal 1
+expect average of nums to equal 2
+expect first of nums to equal 3
+expect last of nums to equal 2
+
+# indexing (positions start at 1)
+expect item 2 of nums to equal 1
+expect nums at 2 to equal 1
+set item 2 of nums to 9
+expect nums to equal list of 3 and 9 and 2
+expect position of 9 in nums to equal 2
+expect position of 100 in nums to equal 0
+
+# sorting
+sort nums
+expect nums to equal list of 2 and 3 and 9
+sort nums backwards
+expect nums to equal list of 9 and 3 and 2
+
+# add / remove
+add 5 to nums
+expect count of nums to equal 4
+remove 5 from nums
+expect count of nums to equal 3
+
+# slicing
+expect the first 2 of nums to equal list of 9 and 3
+expect the last 1 of nums to equal list of 2
+
+# map and filter
+set squares to each n in list of 1 and 2 and 3 as n multiplied by n
+expect squares to equal list of 1 and 4 and 9
+set big to only the ones in list of 1 and 5 and 10 where it is greater than 4
+expect big to equal list of 5 and 10
+
+# --- Text ---
+set word to "Hello"
+expect uppercase of word to equal "HELLO"
+expect lowercase of word to equal "hello"
+expect count of word to equal 5
+expect letters of "abc" to equal list of "a" and "b" and "c"
+expect word at 1 to equal "H"
+expect item 5 of word to equal "o"
+expect the first 3 of word to equal "Hel"
+expect the last 2 of word to equal "lo"
+expect split "a,b,c" by "," to equal list of "a" and "b" and "c"
+expect join list of "a" and "b" with "-" to equal "a-b"
+expect value of "42" to equal 42
+
+set chars to letters of "plain"
+reverse chars
+expect join chars with "" to equal "nialp"
+
+# --- Lookups (key -> value tables) ---
+set ages to empty lookup
+set ages at "amy" to 30
+set ages at "bob" to 25
+expect ages at "amy" to equal 30
+expect count of ages to equal 2
+expect keys of ages to equal list of "amy" and "bob"
+expect values of ages to equal list of 30 and 25
+
+set table to lookup of "x" being 1 and "y" being 2
+expect table at "y" to equal 2
+remove "x" from table
+expect count of table to equal 1
+
+set flag to 0
+if ages has "amy" then
+    set flag to 1
+end
+expect flag to equal 1
+
+set flag to 0
+if "carl" is in ages then
+    set flag to 1
+end
+expect flag to equal 0
+
+# --- Conditions ---
+set flag to 0
+if 5 is at least 5 then
+    add 1 to flag
+end
+if 5 is at most 5 then
+    add 1 to flag
+end
+if 4 is at least 5 then
+    add 100 to flag
+end
+expect flag to equal 2
+
+set flag to 0
+if "hello" contains "ell" then
+    add 1 to flag
+end
+if "hello" starts with "he" then
+    add 1 to flag
+end
+if "hello" ends with "lo" then
+    add 1 to flag
+end
+expect flag to equal 3
+
+set flag to 0
+if list of 1 and 2 and 3 contains 2 then
+    set flag to 1
+end
+expect flag to equal 1
+
+set flag to 0
+if 7 is not equal to 8 then
+    set flag to 1
+end
+expect flag to equal 1
+
+set flag to 0
+if 7 is between 1 and 10 then
+    set flag to 1
+end
+expect flag to equal 1
+
+set flag to 0
+if 9 is divisible by 3 then
+    set flag to 1
+end
+expect flag to equal 1
+
+# --- otherwise if chains ---
+set grade to 85
+set letter to ""
+if grade is at least 90 then
+    set letter to "A"
+otherwise if grade is at least 80 then
+    set letter to "B"
+otherwise if grade is at least 70 then
+    set letter to "C"
+otherwise
+    set letter to "F"
+end
+expect letter to equal "B"
+
+# --- Loops ---
+set total to 0
+for each n from 1 to 100
+    add n to total
+end
+expect total to equal 5050
+
+set total to 0
+set i to 0
+while i is less than 5
+    add 1 to i
+    if i is equal to 3 then
+        skip
+    end
+    if i is equal to 5 then
+        stop
+    end
+    add i to total
+end
+expect total to equal 7
+
+# --- Functions and recursion ---
+to double with n
+    give back n multiplied by 2
+end
+expect call double with 21 to equal 42
+
+to fact with n
+    if n is at most 1 then
+        give back 1
+    end
+    set m to n minus 1
+    give back n multiplied by call fact with m
+end
+expect call fact with 5 to equal 120
+
+print ""
+print "Tests finished. Every line above should say OK."

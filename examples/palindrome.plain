@@ -1,0 +1,17 @@
+# LeetCode #125 (simplified): Valid Palindrome
+# A word is a palindrome if it reads the same forwards and backwards.
+
+to is_palindrome with word
+    set chars to letters of lowercase of word
+    set flipped to letters of lowercase of word
+    reverse flipped
+    if chars is equal to flipped then
+        give back true
+    end
+    give back false
+end
+
+expect call is_palindrome with "Racecar" to equal true
+expect call is_palindrome with "level" to equal true
+expect call is_palindrome with "hello" to equal false
+print "Palindrome check works!"

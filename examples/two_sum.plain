@@ -1,0 +1,31 @@
+# LeetCode #1: Two Sum
+# Given a list of numbers and a target, find the positions of the
+# two numbers that add up to the target.
+#
+# The trick: remember each number's position in a lookup as you go.
+# For each number, check if the number you NEED to reach the target
+# has already been seen.
+
+to two_sum with nums and target
+    set seen to empty lookup
+    set i to 0
+    for each n in nums
+        add 1 to i
+        set need to target minus n
+        if seen has need then
+            give back list of seen at need and i
+        end
+        set seen at n to i
+    end
+    give back empty list
+end
+
+set nums to list of 2 and 7 and 11 and 15
+set answer to call two_sum with nums and 9
+print "Numbers: [nums]"
+print "Positions that add to 9: [answer]"
+expect answer to equal list of 1 and 2
+
+set nums to list of 3 and 2 and 4
+set answer to call two_sum with nums and 6
+expect answer to equal list of 2 and 3

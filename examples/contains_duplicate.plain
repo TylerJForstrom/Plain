@@ -1,0 +1,22 @@
+# LeetCode #217: Contains Duplicate
+# Does any number appear more than once in the list?
+# Remember everything seen so far in a lookup; if a number is
+# already there, it's a duplicate.
+
+to has_duplicate with nums
+    set seen to empty lookup
+    for each n in nums
+        if seen has n then
+            give back true
+        end
+        set seen at n to true
+    end
+    give back false
+end
+
+set a to list of 1 and 2 and 3 and 1
+expect call has_duplicate with a to equal true
+
+set b to list of 1 and 2 and 3 and 4
+expect call has_duplicate with b to equal false
+print "Duplicate check works!"

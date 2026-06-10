@@ -28,20 +28,29 @@ KEYWORDS = {
     "give", "back", "call", "with",
     "wait", "seconds",
     "read", "lines", "into", "save",
+    "try", "exit", "put",
     # conditions
     "is", "not", "equal", "greater", "less", "than", "one", "between",
-    "divisible",
+    "divisible", "positive", "negative",
+    # aliases / extras
+    "say", "as", "now", "expect",
     # arithmetic
     "plus", "minus", "multiplied", "divided", "by",
     # values & list ops
     "list", "of", "and", "or", "empty",
+    "lookup", "being", "at",
     "true", "false",
+    "contains", "starts", "ends",
+    "arguments",
     # built-ins
     "count", "length", "sum", "average", "biggest", "smallest",
     "random", "first", "last", "uppercase", "lowercase",
     "only", "the", "ones", "where", "it",
     "square", "root", "absolute", "value", "round",
     "split", "join",
+    # indexing, lookups, and comparisons
+    "item", "position", "remainder", "letters", "keys", "values",
+    "least", "most", "has", "floor", "middle",
 }
 
 TOKEN_RE = re.compile(
@@ -55,25 +64,27 @@ TOKEN_RE = re.compile(
 
 def tokenize(src):
     toks = []
+    line = 1
     for m in TOKEN_RE.finditer(src):
         s, num, word, nl, skip = m.groups()
         if skip is not None:
             continue
         if nl is not None:
             if toks and toks[-1][0] != "NL":
-                toks.append(("NL", None))
+                toks.append(("NL", None, line))
+            line += 1
             continue
         if s is not None:
-            toks.append(("STR", s))
+            toks.append(("STR", s, line))
         elif num is not None:
-            toks.append(("NUM", float(num) if "." in num else int(num)))
+            toks.append(("NUM", float(num) if "." in num else int(num), line))
         elif word is not None:
             lw = word.lower()
             if lw in KEYWORDS:
-                toks.append(("KW", lw))
+                toks.append(("KW", lw, line))
             else:
-                toks.append(("ID", word))
-    toks.append(("EOF", None))
+                toks.append(("ID", word, line))
+    toks.append(("EOF", None, line))
     return toks
 
 
@@ -87,12 +98,15 @@ class Parser:
         self.i = 0
 
     def peek(self):
-        return self.t[self.i]
+        return self.t[self.i][:2]
+
+    def line(self):
+        return self.t[self.i][2]
 
     def eat(self):
         tok = self.t[self.i]
         self.i += 1
-        return tok
+        return tok[:2]
 
     def accept(self, kind, val=None):
         tok = self.peek()
@@ -106,7 +120,8 @@ class Parser:
         if not tok:
             got = self.peek()[1] if self.peek()[1] is not None else self.peek()[0]
             raise SyntaxError(suggest(
-                f"Expected '{val or kind}', got '{got}'", self.peek()))
+                f"Line {self.line()}: Expected '{val or kind}', got '{got}'",
+                self.peek()))
         return tok
 
     def skip_nls(self):
@@ -145,11 +160,30 @@ def parse_block(p, enders):
 
 
 def parse_stmt(p):
+    # Every statement is tagged with its line number so runtime errors
+    # can say where they happened.
+    ln = p.line()
+    return ("stmt", ln, parse_stmt_inner(p))
+
+
+def parse_stmt_inner(p):
     tok = p.peek()
 
     if tok == ("KW", "set"):
         p.eat()
+        # set item N of NAME to VALUE
+        if p.accept("KW", "item"):
+            idx = parse_expr(p)
+            p.expect("KW", "of")
+            name = p.expect("ID")[1]
+            p.expect("KW", "to")
+            return ("setitem", name, idx, parse_expr(p))
         name = p.expect("ID")[1]
+        # set NAME at KEY to VALUE   (lookups and lists)
+        if p.accept("KW", "at"):
+            key = parse_atom(p)
+            p.expect("KW", "to")
+            return ("setitem", name, key, parse_expr(p))
         p.expect("KW", "to")
         return ("set", name, parse_expr(p))
 
@@ -173,15 +207,25 @@ def parse_stmt(p):
 
     if tok == ("KW", "sort"):
         p.eat()
-        return ("sort", p.expect("ID")[1])
+        name = p.expect("ID")[1]
+        desc = bool(p.accept("KW", "backwards"))
+        return ("sort", name, desc)
 
     if tok == ("KW", "reverse"):
         p.eat()
         return ("reverse", p.expect("ID")[1])
 
-    if tok == ("KW", "print"):
+    if tok == ("KW", "print") or tok == ("KW", "say"):
         p.eat()
         return ("print", parse_expr(p))
+
+    if tok == ("KW", "expect"):
+        p.eat()
+        left = parse_expr(p)
+        p.expect("KW", "to")
+        p.expect("KW", "equal")
+        right = parse_expr(p)
+        return ("expect", left, right)
 
     if tok == ("KW", "ask"):
         p.eat()
@@ -224,14 +268,11 @@ def parse_stmt(p):
 
     if tok == ("KW", "if"):
         p.eat()
-        cond = parse_cond(p)
-        p.expect("KW", "then")
-        body = parse_block(p, ["end", "otherwise"])
-        else_body = []
-        if p.accept("KW", "otherwise"):
-            else_body = parse_block(p, ["end"])
-        p.expect("KW", "end")
-        return ("if", cond, body, else_body)
+        return parse_if(p)
+
+    if tok == ("KW", "exit"):
+        p.eat()
+        return ("exit",)
 
     if tok == ("KW", "repeat"):
         p.eat()
@@ -298,7 +339,24 @@ def parse_stmt(p):
         path = parse_expr(p)
         return ("save", val, path)
 
-    raise SyntaxError(suggest(f"I don't understand '{tok[1] or tok[0]}'", tok))
+    raise SyntaxError(suggest(
+        f"Line {p.line()}: I don't understand '{tok[1] or tok[0]}'", tok))
+
+
+def parse_if(p):
+    # The 'if' keyword has already been eaten.
+    cond = parse_cond(p)
+    p.expect("KW", "then")
+    body = parse_block(p, ["end", "otherwise"])
+    else_body = []
+    if p.accept("KW", "otherwise"):
+        # "otherwise if ... then" chains share a single final 'end'.
+        if p.accept("KW", "if"):
+            else_body = [("stmt", p.line(), parse_if(p))]
+            return ("if", cond, body, else_body)
+        else_body = parse_block(p, ["end"])
+    p.expect("KW", "end")
+    return ("if", cond, body, else_body)
 
 
 # ---------- Conditions ----------
@@ -316,9 +374,27 @@ def parse_cond(p):
 
 def parse_cmp(p):
     left = parse_expr(p)
+    # word-style checks that don't need 'is':
+    #   X contains Y / X has Y / X starts with Y / X ends with Y
+    if p.accept("KW", "contains") or p.accept("KW", "has"):
+        return ("member", parse_expr(p), left)
+    if p.accept("KW", "starts"):
+        p.expect("KW", "with")
+        return ("startswith", left, parse_expr(p))
+    if p.accept("KW", "ends"):
+        p.expect("KW", "with")
+        return ("endswith", left, parse_expr(p))
     p.expect("KW", "is")
     negate = bool(p.accept("KW", "not"))
-    if p.accept("KW", "equal"):
+    if p.accept("KW", "at"):
+        if p.accept("KW", "least"):
+            node = ("cmp", "ge", left, parse_expr(p))
+        elif p.accept("KW", "most"):
+            node = ("cmp", "le", left, parse_expr(p))
+        else:
+            raise SyntaxError(
+                f"Line {p.line()}: Expected 'least' or 'most' after 'is at'")
+    elif p.accept("KW", "equal"):
         p.expect("KW", "to")
         node = ("cmp", "eq", left, parse_expr(p))
     elif p.accept("KW", "greater"):
@@ -338,6 +414,14 @@ def parse_cmp(p):
     elif p.accept("KW", "divisible"):
         p.expect("KW", "by")
         node = ("divisible", left, parse_atom(p))
+    elif p.accept("KW", "empty"):
+        node = ("isempty", left)
+    elif p.accept("KW", "in"):
+        node = ("member", left, parse_atom(p))
+    elif p.accept("KW", "positive"):
+        node = ("cmp", "gt", left, ("num", 0))
+    elif p.accept("KW", "negative"):
+        node = ("cmp", "lt", left, ("num", 0))
     else:
         raise SyntaxError(
             "Expected 'equal to', 'greater/less than', 'one of', or 'between'"
@@ -383,10 +467,23 @@ UNARY_BUILTINS = [
     ("last",      "last",      "of"),
     ("uppercase", "uppercase", "of"),
     ("lowercase", "lowercase", "of"),
+    ("letters",   "letters",   "of"),
+    ("keys",      "keys",      "of"),
+    ("values",    "values",    "of"),
+    ("value",     "coerce",    "of"),
+    ("floor",     "floor",     "of"),
 ]
 
 
 def parse_atom(p):
+    node = parse_atom_base(p)
+    # postfix indexing: LIST at 2, LOOKUP at "key", TEXT at 1
+    while p.accept("KW", "at"):
+        node = ("index", node, parse_atom_base(p))
+    return node
+
+
+def parse_atom_base(p):
     # list literals
     if p.accept("KW", "list"):
         p.expect("KW", "of")
@@ -395,8 +492,50 @@ def parse_atom(p):
             items.append(parse_atom(p))
         return ("list", items)
     if p.accept("KW", "empty"):
+        if p.accept("KW", "lookup"):
+            return ("dict", [])
         p.expect("KW", "list")
         return ("list", [])
+
+    # lookup literal: lookup of "a" being 1 and "b" being 2
+    if p.accept("KW", "lookup"):
+        p.expect("KW", "of")
+        pairs = []
+        while True:
+            k = parse_atom_base(p)
+            p.expect("KW", "being")
+            pairs.append((k, parse_atom(p)))
+            if not p.accept("KW", "and"):
+                break
+        return ("dict", pairs)
+
+    # item N of LIST  (1-based)
+    if p.accept("KW", "item"):
+        idx = parse_expr(p)
+        p.expect("KW", "of")
+        return ("index", parse_atom(p), idx)
+
+    # position of X in LIST  (1-based; 0 means not found)
+    if p.accept("KW", "position"):
+        p.expect("KW", "of")
+        x = parse_atom(p)
+        p.expect("KW", "in")
+        return ("call", "position", [x, parse_atom(p)])
+
+    # remainder of A divided by B
+    if p.accept("KW", "remainder"):
+        p.expect("KW", "of")
+        a = parse_atom(p)
+        p.expect("KW", "divided")
+        p.expect("KW", "by")
+        return ("call", "mod", [a, parse_atom(p)])
+
+    # middle of A and B  (whole-number midpoint, great for binary search)
+    if p.accept("KW", "middle"):
+        p.expect("KW", "of")
+        a = parse_atom(p)
+        p.expect("KW", "and")
+        return ("call", "middle", [a, parse_atom(p)])
 
     # one-argument built-ins
     for kw, fn, sep in UNARY_BUILTINS:
@@ -439,6 +578,35 @@ def parse_atom(p):
         sep = parse_atom(p)
         return ("call", "join", [lst, sep])
 
+    # unary minus: "negative 5"
+    if p.accept("KW", "negative"):
+        return ("bin", "-", ("num", 0), parse_atom(p))
+
+    # current time
+    if p.accept("KW", "now"):
+        return ("call", "now", [])
+
+    # slicing: "the first N of LIST" / "the last N of LIST"
+    if p.accept("KW", "the"):
+        if p.accept("KW", "first"):
+            n = parse_atom(p)
+            p.expect("KW", "of")
+            return ("call", "take_first", [parse_atom(p), n])
+        if p.accept("KW", "last"):
+            n = parse_atom(p)
+            p.expect("KW", "of")
+            return ("call", "take_last", [parse_atom(p), n])
+        raise SyntaxError("Expected 'first' or 'last' after 'the'")
+
+    # map: "each NAME in LIST as EXPR"
+    if p.accept("KW", "each"):
+        name = p.expect("ID")[1]
+        p.expect("KW", "in")
+        src = parse_atom(p)
+        p.expect("KW", "as")
+        body = parse_expr(p)
+        return ("map", name, src, body)
+
     # filter: "only the ones in LIST where COND"
     if p.accept("KW", "only"):
         p.expect("KW", "the")
@@ -463,13 +631,15 @@ def parse_atom(p):
     if p.accept("KW", "it"):
         return ("var", "it")
 
+    line = p.line()
     tok = p.eat()
     if tok[0] == "NUM": return ("num", tok[1])
     if tok[0] == "STR": return ("str", tok[1])
     if tok[0] == "ID":  return ("var", tok[1])
     if tok == ("KW", "true"):  return ("num", 1)
     if tok == ("KW", "false"): return ("num", 0)
-    raise SyntaxError(suggest(f"Expected a value, got '{tok[1] or tok[0]}'", tok))
+    raise SyntaxError(suggest(
+        f"Line {line}: Expected a value, got '{tok[1] or tok[0]}'", tok))
 
 
 # ============================================================
@@ -492,10 +662,35 @@ class ReturnValue(Exception):
         self.value = value
 
 
+class PlainRuntimeError(Exception):
+    """A runtime problem, already labeled with the line it happened on."""
+
+
 def to_str(v):
+    if isinstance(v, bool):
+        return "true" if v else "false"
     if isinstance(v, float) and v.is_integer():
         return str(int(v))
+    if isinstance(v, list):
+        return "[" + ", ".join(to_str(x) for x in v) + "]"
+    if isinstance(v, dict):
+        return "{" + ", ".join(f"{to_str(k)}: {to_str(x)}" for k, x in v.items()) + "}"
     return str(v)
+
+
+def index_get(base, key):
+    if isinstance(base, dict):
+        if key not in base:
+            raise RuntimeError(f"The lookup doesn't have '{to_str(key)}' yet.")
+        return base[key]
+    if isinstance(base, (list, str)):
+        i = int(key)
+        kind = "list" if isinstance(base, list) else "text"
+        if i < 1 or i > len(base):
+            raise RuntimeError(
+                f"Position {i} is outside the {kind} (it has {len(base)} items).")
+        return base[i - 1]
+    raise RuntimeError("'at' only works on lists, text, and lookups.")
 
 
 def add_vals(a, b):
@@ -523,11 +718,23 @@ def evaluate(node, env):
         if op == "+": return add_vals(av, bv)
         if op == "-": return av - bv
         if op == "*": return av * bv
-        if op == "/": return av / bv
+        if op == "/":
+            if bv == 0:
+                raise RuntimeError("You can't divide by zero.")
+            return av / bv
     if t == "cmp":
         _, op, a, b = node
         av, bv = evaluate(a, env), evaluate(b, env)
-        return {"eq": av == bv, "gt": av > bv, "lt": av < bv}[op]
+        return {"eq": av == bv, "gt": av > bv, "lt": av < bv,
+                "ge": av >= bv, "le": av <= bv}[op]
+    if t == "index":
+        return index_get(evaluate(node[1], env), evaluate(node[2], env))
+    if t == "dict":
+        return {evaluate(k, env): evaluate(v, env) for k, v in node[1]}
+    if t == "startswith":
+        return to_str(evaluate(node[1], env)).startswith(to_str(evaluate(node[2], env)))
+    if t == "endswith":
+        return to_str(evaluate(node[1], env)).endswith(to_str(evaluate(node[2], env)))
     if t == "member":
         return evaluate(node[1], env) in evaluate(node[2], env)
     if t == "between":
@@ -537,6 +744,8 @@ def evaluate(node, env):
         return lo <= v <= hi
     if t == "divisible":
         return evaluate(node[1], env) % evaluate(node[2], env) == 0
+    if t == "isempty":
+        return len(evaluate(node[1], env)) == 0
     if t == "logic":
         _, op, a, b = node
         if op == "not": return not evaluate(a, env)
@@ -581,8 +790,48 @@ def evaluate(node, env):
         if name == "round":     return round(x)
         if name == "split":     return str(vals[0]).split(vals[1])
         if name == "join":      return str(vals[1]).join(to_str(v) for v in vals[0])
+        if name == "take_first":
+            seq = vals[0] if isinstance(vals[0], (str, list)) else list(vals[0])
+            n = int(vals[1])
+            return seq[:n] if n > 0 else seq[:0]
+        if name == "take_last":
+            seq = vals[0] if isinstance(vals[0], (str, list)) else list(vals[0])
+            n = int(vals[1])
+            return seq[-n:] if n > 0 else seq[:0]
+        if name == "now":       return time.strftime("%Y-%m-%d %H:%M:%S")
+        if name == "mod":
+            if vals[1] == 0:
+                raise RuntimeError("You can't take a remainder when dividing by zero.")
+            return vals[0] % vals[1]
+        if name == "floor":     return math.floor(x)
+        if name == "middle":    return (int(vals[0]) + int(vals[1])) // 2
+        if name == "position":
+            item, container = vals
+            if isinstance(container, str):
+                return container.find(to_str(item)) + 1
+            return container.index(item) + 1 if item in container else 0
+        if name == "letters":   return list(to_str(x))
+        if name == "keys":      return list(x.keys())
+        if name == "values":    return list(x.values())
+        if name == "coerce":    return coerce(to_str(x))
     if t == "userfn":
         return call_user_fn(node[1], [evaluate(a, env) for a in node[2]], env)
+    if t == "map":
+        _, name, src_node, body = node
+        src = evaluate(src_node, env)
+        result = []
+        had = name in env
+        saved = env.get(name)
+        try:
+            for x in src:
+                env[name] = x
+                result.append(evaluate(body, env))
+        finally:
+            if had:
+                env[name] = saved
+            else:
+                env.pop(name, None)
+        return result
     raise RuntimeError(f"Cannot evaluate {node}")
 
 
@@ -617,8 +866,35 @@ def run(node, env):
     if t == "block":
         for s in node[1]:
             run(s, env)
+    elif t == "stmt":
+        # Label any runtime problem with the line it happened on.
+        try:
+            run(node[2], env)
+        except PlainRuntimeError:
+            raise
+        except (NameError, RuntimeError, ValueError, TypeError,
+                ZeroDivisionError, IndexError, KeyError) as e:
+            raise PlainRuntimeError(f"Line {node[1]}: {e}") from None
     elif t == "set":
         env[node[1]] = evaluate(node[2], env)
+    elif t == "setitem":
+        _, name, key_n, val_n = node
+        if name not in env:
+            raise NameError(f"You haven't set '{name}' yet.")
+        target = env[name]
+        key = evaluate(key_n, env)
+        val = evaluate(val_n, env)
+        if isinstance(target, dict):
+            target[key] = val
+        elif isinstance(target, list):
+            i = int(key)
+            if i < 1 or i > len(target):
+                raise RuntimeError(
+                    f"Position {i} is outside the list (it has {len(target)} "
+                    f"items). Use 'add ... to {name}' to make it longer.")
+            target[i - 1] = val
+        else:
+            raise RuntimeError(f"'{name}' is not a list or lookup.")
     elif t == "add":
         cur = env.get(node[1], 0)
         v = evaluate(node[2], env)
@@ -630,11 +906,16 @@ def run(node, env):
         env[node[1]] = env.get(node[1], 0) - evaluate(node[2], env)
     elif t == "remove":
         v = evaluate(node[2], env)
-        lst = env.get(node[1])
-        if isinstance(lst, list) and v in lst:
-            lst.remove(v)
+        target = env.get(node[1])
+        if isinstance(target, list) and v in target:
+            target.remove(v)
+        elif isinstance(target, dict) and v in target:
+            del target[v]
     elif t == "sort":
-        env[node[1]].sort()
+        lst = env.get(node[1])
+        if not isinstance(lst, list):
+            raise RuntimeError(f"'{node[1]}' is not a list, so it can't be sorted.")
+        lst.sort(reverse=node[2])
     elif t == "reverse":
         env[node[1]].reverse()
     elif t == "print":
@@ -726,8 +1007,18 @@ def run(node, env):
         raise StopLoop()
     elif t == "skip":
         raise SkipLoop()
+    elif t == "exit":
+        sys.exit(0)
     elif t == "return":
         raise ReturnValue(evaluate(node[1], env))
+    elif t == "expect":
+        a = evaluate(node[1], env)
+        b = evaluate(node[2], env)
+        if a == b:
+            print(f"OK: got {to_str(a)}")
+        else:
+            print(f"FAIL: expected {to_str(b)}, got {to_str(a)}")
+            env["__fails__"] = env.get("__fails__", 0) + 1
 
 
 def coerce(s):
@@ -776,21 +1067,31 @@ def repl():
         prompt = ">>> "
         try:
             run(ast, env)
-        except (NameError, RuntimeError, ZeroDivisionError) as e:
+        except (NameError, RuntimeError, ZeroDivisionError, PlainRuntimeError) as e:
             print(f"Oops: {e}")
+        except ReturnValue:
+            print("Oops: 'give back' only works inside a function.")
         buf = ""
 
 
 def main():
+    sys.setrecursionlimit(6000)
     if len(sys.argv) < 2:
         repl()
         return
     with open(sys.argv[1], "r", encoding="utf-8") as f:
         src = f.read()
+    env = {}
     try:
-        run(parse(tokenize(src)), {})
-    except (SyntaxError, NameError, RuntimeError) as e:
+        run(parse(tokenize(src)), env)
+    except (SyntaxError, PlainRuntimeError, NameError, RuntimeError) as e:
         print(f"Oops: {e}")
+        sys.exit(1)
+    except ReturnValue:
+        print("Oops: 'give back' only works inside a function.")
+        sys.exit(1)
+    if env.get("__fails__"):
+        sys.exit(1)
 
 
 if __name__ == "__main__":

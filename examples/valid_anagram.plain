@@ -1,0 +1,19 @@
+# LeetCode #242: Valid Anagram
+# Two words are anagrams if they use exactly the same letters,
+# just in a different order. Sort the letters of each and compare.
+
+to is_anagram with a and b
+    set x to letters of lowercase of a
+    set y to letters of lowercase of b
+    sort x
+    sort y
+    if x is equal to y then
+        give back true
+    end
+    give back false
+end
+
+expect call is_anagram with "listen" and "silent" to equal true
+expect call is_anagram with "Dormitory" and "DirtyRoom" to equal true
+expect call is_anagram with "hello" and "world" to equal false
+print "Anagram check works!"
