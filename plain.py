@@ -51,6 +51,8 @@ KEYWORDS = {
     # indexing, lookups, and comparisons
     "item", "position", "remainder", "letters", "keys", "values",
     "least", "most", "has", "floor", "middle",
+    # list surgery and parity
+    "insert", "swap", "odd", "even",
 }
 
 TOKEN_RE = re.compile(
@@ -244,9 +246,43 @@ def parse_stmt_inner(p):
 
     if tok == ("KW", "remove"):
         p.eat()
+        # remove the first/last from LIST [into VAR]
+        if p.accept("KW", "the"):
+            if p.accept("KW", "first"):
+                which = "first"
+            elif p.accept("KW", "last"):
+                which = "last"
+            else:
+                raise SyntaxError(
+                    f"Line {p.line()}: Expected 'first' or 'last' after 'remove the'")
+            p.expect("KW", "from")
+            name = p.expect("ID")[1]
+            dest = p.expect("ID")[1] if p.accept("KW", "into") else None
+            return ("removepos", name, which, dest)
+        # remove item N from LIST [into VAR]
+        if p.accept("KW", "item"):
+            idx = parse_expr(p)
+            p.expect("KW", "from")
+            name = p.expect("ID")[1]
+            dest = p.expect("ID")[1] if p.accept("KW", "into") else None
+            return ("removeat", name, idx, dest)
         e = parse_expr(p)
         p.expect("KW", "from")
         return ("remove", p.expect("ID")[1], e)
+
+    if tok == ("KW", "insert"):
+        p.eat()
+        val = parse_expr(p)
+        p.expect("KW", "into")
+        name = p.expect("ID")[1]
+        p.expect("KW", "at")
+        return ("insertat", name, parse_expr(p), val)
+
+    if tok == ("KW", "swap"):
+        p.eat()
+        t1 = parse_target(p)
+        p.expect("KW", "and")
+        return ("swap", t1, parse_target(p))
 
     if tok == ("KW", "sort"):
         p.eat()
@@ -412,6 +448,20 @@ def parse_stmt_inner(p):
         f"Line {p.line()}: I don't understand '{tok[1] or tok[0]}'", tok))
 
 
+def parse_target(p):
+    # A place a value can live: x, nums[2], board[r][c], ages at "amy"
+    name = p.expect("ID")[1]
+    keys = []
+    while True:
+        if p.accept("KW", "at"):
+            keys.append(parse_atom_base(p))
+        elif p.accept("OP", "["):
+            keys.append(parse_expr(p))
+            p.expect("OP", "]")
+        else:
+            return (name, keys)
+
+
 def parse_loop_spec(p, first):
     if p.accept("KW", "each"):
         step = 1
@@ -549,6 +599,10 @@ def parse_cmp(p):
         node = ("cmp", "gt", left, ("num", 0))
     elif p.accept("KW", "negative"):
         node = ("cmp", "lt", left, ("num", 0))
+    elif p.accept("KW", "odd"):
+        node = ("parity", left, 1)
+    elif p.accept("KW", "even"):
+        node = ("parity", left, 0)
     else:
         raise SyntaxError(
             "Expected 'equal to', 'greater/less than', 'one of', or 'between'"
@@ -826,6 +880,20 @@ def parse_atom_base(p):
         p.expect("KW", "with")
         return ("call", "grid", [rows, cols, parse_atom(p)])
 
+    # bigger of A and B / smaller of A and B  (also not reserved words)
+    if p.peek() == ("ID", "bigger") and p.peek2() == ("KW", "of"):
+        p.eat()
+        p.eat()
+        a = parse_atom(p)
+        p.expect("KW", "and")
+        return ("call", "max2", [a, parse_atom(p)])
+    if p.peek() == ("ID", "smaller") and p.peek2() == ("KW", "of"):
+        p.eat()
+        p.eat()
+        a = parse_atom(p)
+        p.expect("KW", "and")
+        return ("call", "min2", [a, parse_atom(p)])
+
     line = p.line()
     tok = p.eat()
     if tok[0] == "NUM": return ("num", tok[1])
@@ -904,6 +972,38 @@ def add_vals(a, b):
     return a + b
 
 
+def path_get(env, name, keys):
+    if name not in env:
+        raise NameError(f"You haven't set '{name}' yet.")
+    v = env[name]
+    for k in keys:
+        v = index_get(v, k)
+    return v
+
+
+def path_set(env, name, keys, val):
+    if not keys:
+        env[name] = val
+        return
+    if name not in env:
+        raise NameError(f"You haven't set '{name}' yet.")
+    target = env[name]
+    for k in keys[:-1]:
+        target = index_get(target, k)
+    key = keys[-1]
+    if isinstance(target, dict):
+        target[key] = val
+    elif isinstance(target, list):
+        i = int(key)
+        if i < 1 or i > len(target):
+            raise RuntimeError(
+                f"Position {i} is outside the list (it has {len(target)} "
+                f"items). Use 'add ... to {name}' to make it longer.")
+        target[i - 1] = val
+    else:
+        raise RuntimeError(f"'{name}' is not a list or lookup.")
+
+
 def evaluate(node, env):
     t = node[0]
     if t == "num":
@@ -955,6 +1055,8 @@ def evaluate(node, env):
         return lo <= v <= hi
     if t == "divisible":
         return evaluate(node[1], env) % evaluate(node[2], env) == 0
+    if t == "parity":
+        return int(evaluate(node[1], env)) % 2 == node[2]
     if t == "isempty":
         return len(evaluate(node[1], env)) == 0
     if t == "logic":
@@ -1027,6 +1129,8 @@ def evaluate(node, env):
         if name == "grid":
             rows, cols, fill = int(vals[0]), int(vals[1]), vals[2]
             return [[fill for _ in range(cols)] for _ in range(rows)]
+        if name == "max2":    return max(vals)
+        if name == "min2":    return min(vals)
         if name == "letters":   return list(to_str(x))
         if name == "keys":      return list(x.keys())
         if name == "values":    return list(x.values())
@@ -1098,23 +1202,49 @@ def run(node, env):
         _, name, key_nodes, val_n = node
         if name not in env:
             raise NameError(f"You haven't set '{name}' yet.")
-        target = env[name]
         keys = [evaluate(k, env) for k in key_nodes]
-        for k in keys[:-1]:
-            target = index_get(target, k)
-        key = keys[-1]
-        val = evaluate(val_n, env)
-        if isinstance(target, dict):
-            target[key] = val
-        elif isinstance(target, list):
-            i = int(key)
-            if i < 1 or i > len(target):
-                raise RuntimeError(
-                    f"Position {i} is outside the list (it has {len(target)} "
-                    f"items). Use 'add ... to {name}' to make it longer.")
-            target[i - 1] = val
-        else:
-            raise RuntimeError(f"'{name}' is not a list or lookup.")
+        path_set(env, name, keys, evaluate(val_n, env))
+    elif t == "removepos":
+        _, name, which, dest = node
+        lst = env.get(name)
+        if not isinstance(lst, list):
+            raise RuntimeError(f"'{name}' is not a list.")
+        if not lst:
+            raise RuntimeError(f"'{name}' is already empty.")
+        v = lst.pop(0) if which == "first" else lst.pop()
+        if dest:
+            env[dest] = v
+    elif t == "removeat":
+        _, name, idx_n, dest = node
+        lst = env.get(name)
+        if not isinstance(lst, list):
+            raise RuntimeError(f"'{name}' is not a list.")
+        i = int(evaluate(idx_n, env))
+        if i < 1 or i > len(lst):
+            raise RuntimeError(
+                f"Position {i} is outside the list (it has {len(lst)} items).")
+        v = lst.pop(i - 1)
+        if dest:
+            env[dest] = v
+    elif t == "insertat":
+        _, name, idx_n, val_n = node
+        lst = env.get(name)
+        if not isinstance(lst, list):
+            raise RuntimeError(f"'{name}' is not a list.")
+        i = int(evaluate(idx_n, env))
+        if i < 1 or i > len(lst) + 1:
+            raise RuntimeError(
+                f"Position {i} is outside the list (you can insert at 1 "
+                f"to {len(lst) + 1}).")
+        lst.insert(i - 1, evaluate(val_n, env))
+    elif t == "swap":
+        _, (n1, kn1), (n2, kn2) = node
+        k1 = [evaluate(k, env) for k in kn1]
+        k2 = [evaluate(k, env) for k in kn2]
+        v1 = path_get(env, n1, k1)
+        v2 = path_get(env, n2, k2)
+        path_set(env, n1, k1, v2)
+        path_set(env, n2, k2, v1)
     elif t == "add":
         cur = env.get(node[1], 0)
         v = evaluate(node[2], env)
