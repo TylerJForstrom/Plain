@@ -418,5 +418,34 @@ expect bigger of -2 and -5 to equal -2
 set bigger to 99
 expect bigger to equal 99
 
+# --- Loops with positions ---
+set seen_pairs to []
+for each ch at position i in ["a", "b", "c"]
+    add "[i]:[ch]" to seen_pairs
+end
+expect seen_pairs to equal ["1:a", "2:b", "3:c"]
+
+set rev_pairs to []
+for each ch at position i in ["a", "b"] going backwards
+    add "[i]:[ch]" to rev_pairs
+end
+expect rev_pairs to equal ["2:b", "1:a"]
+
+# --- sort by ---
+set pairs to [[3, "c"], [1, "a"], [2, "b"]]
+sort pairs by it[1]
+expect pairs to equal [[1, "a"], [2, "b"], [3, "c"]]
+sort pairs by it[1] backwards
+expect pairs to equal [[3, "c"], [2, "b"], [1, "a"]]
+
+set words to ["bee", "a", "spider"]
+sort words by count of it
+expect words to equal ["a", "bee", "spider"]
+
+set scores to {"amy": 3, "bob": 9, "carl": 5}
+set names to keys of scores
+sort names by scores at it backwards
+expect names to equal ["bob", "carl", "amy"]
+
 print ""
 print "Tests finished. Every line above should say OK."

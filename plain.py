@@ -287,8 +287,12 @@ def parse_stmt_inner(p):
     if tok == ("KW", "sort"):
         p.eat()
         name = p.expect("ID")[1]
+        # sort LIST by EXPR  - 'it' is each item, e.g. sort pairs by it[2]
+        key = None
+        if p.accept("KW", "by"):
+            key = parse_expr(p)
         desc = bool(p.accept("KW", "backwards"))
-        return ("sort", name, desc)
+        return ("sort", name, desc, key)
 
     if tok == ("KW", "reverse"):
         p.eat()
@@ -390,8 +394,8 @@ def parse_stmt_inner(p):
             if s[0] == "range":
                 _, name, start, stop, step_expr = s
                 return ("rangefor", name, start, stop, step_expr, body)
-            _, name, seq, step, backwards = s
-            return ("for", name, seq, step, backwards, body)
+            _, name, seq, step, backwards, iname = s
+            return ("for", name, seq, step, backwards, iname, body)
         return ("multifor", specs, body)
 
     if tok == ("KW", "read"):
@@ -474,7 +478,16 @@ def parse_loop_spec(p, first):
     else:
         step = 1  # "and c from 1 to 3" - the extra 'each' is optional
     name = p.expect("ID")[1]
+    # for each ch at position i in word  - i counts 1, 2, 3, ...
+    iname = None
+    if p.accept("KW", "at"):
+        p.expect("KW", "position")
+        iname = p.expect("ID")[1]
     if p.accept("KW", "from"):
+        if iname:
+            raise SyntaxError(
+                f"Line {p.line()}: 'at position' only works with 'in', "
+                f"not number ranges (the loop value already counts).")
         start = parse_expr(p)
         p.expect("KW", "to")
         stop = parse_expr(p)
@@ -487,7 +500,7 @@ def parse_loop_spec(p, first):
     backwards = bool(p.accept("KW", "going"))
     if backwards:
         p.expect("KW", "backwards")
-    return ("seq", name, seq, step, backwards)
+    return ("seq", name, seq, step, backwards, iname)
 
 
 def parse_if(p):
@@ -1265,7 +1278,23 @@ def run(node, env):
         lst = env.get(node[1])
         if not isinstance(lst, list):
             raise RuntimeError(f"'{node[1]}' is not a list, so it can't be sorted.")
-        lst.sort(reverse=node[2])
+        if node[3] is None:
+            lst.sort(reverse=node[2])
+        else:
+            had = "it" in env
+            saved = env.get("it")
+
+            def sort_key(x):
+                env["it"] = x
+                return evaluate(node[3], env)
+
+            try:
+                lst.sort(key=sort_key, reverse=node[2])
+            finally:
+                if had:
+                    env["it"] = saved
+                else:
+                    env.pop("it", None)
     elif t == "reverse":
         env[node[1]].reverse()
     elif t == "print":
@@ -1306,12 +1335,15 @@ def run(node, env):
             except StopLoop:
                 break
     elif t == "for":
-        _, name, seq_node, step, backwards, body = node
+        _, name, seq_node, step, backwards, iname, body = node
         seq = list(evaluate(seq_node, env))
+        indexed = list(enumerate(seq, 1))  # position = place in the original list
         if backwards:
-            seq = seq[::-1]
-        for item in seq[::step]:
+            indexed.reverse()
+        for i, item in indexed[::step]:
             env[name] = item
+            if iname:
+                env[iname] = i
             try:
                 for s in body:
                     run(s, env)
@@ -1362,12 +1394,15 @@ def run(node, env):
                     run_level(k + 1)
                     v += direction * step
             else:
-                _, name, seq_n, step, backwards = spec
+                _, name, seq_n, step, backwards, iname = spec
                 seq = list(evaluate(seq_n, env))
+                indexed = list(enumerate(seq, 1))
                 if backwards:
-                    seq = seq[::-1]
-                for item in seq[::step]:
+                    indexed.reverse()
+                for i, item in indexed[::step]:
                     env[name] = item
+                    if iname:
+                        env[iname] = i
                     run_level(k + 1)
 
         try:
