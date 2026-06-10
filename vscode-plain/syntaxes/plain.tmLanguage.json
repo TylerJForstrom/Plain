@@ -1,0 +1,50 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "Plain",
+    "scopeName": "source.plain",
+    "patterns": [
+        {
+            "name": "comment.line.number-sign.plain",
+            "match": "#.*$"
+        },
+        {
+            "name": "string.quoted.double.plain",
+            "begin": "\"",
+            "end": "\"",
+            "patterns": [
+                {
+                    "name": "variable.other.interpolated.plain",
+                    "match": "\\[\\w+\\]"
+                }
+            ]
+        },
+        {
+            "name": "constant.numeric.plain",
+            "match": "\\b\\d+(\\.\\d+)?\\b"
+        },
+        {
+            "name": "constant.language.plain",
+            "match": "\\b(?i:true|false)\\b"
+        },
+        {
+            "name": "entity.name.function.plain",
+            "match": "(?<=\\b(?i:to|call)\\s)\\s*[A-Za-z_]\\w*"
+        },
+        {
+            "name": "keyword.control.plain",
+            "match": "\\b(?i:if|then|otherwise|end|repeat|times|while|forever|for|each|every|other|going|backwards|stop|skip|give|back|try|exit|to|call|with|expect)\\b"
+        },
+        {
+            "name": "keyword.operator.word.plain",
+            "match": "\\b(?i:plus|minus|multiplied|divided|by|is|not|equal|greater|less|than|at|least|most|between|and|or|one|of|in|contains|starts|ends|has|does|contain|have|start|divisible|odd|even|positive|negative|empty|squared)\\b"
+        },
+        {
+            "name": "support.function.plain",
+            "match": "\\b(?i:set|put|into|add|subtract|from|remove|insert|swap|sort|reverse|print|say|ask|wait|seconds|read|lines|save|count|length|sum|average|biggest|smallest|bigger|smaller|first|last|the|ones|only|where|it|uppercase|lowercase|letters|keys|values|value|split|join|random|square|root|absolute|round|floor|middle|remainder|position|item|items|list|lookup|being|numbers|grid|filled|replace|trim|now|arguments|error|pair)\\b"
+        },
+        {
+            "name": "keyword.operator.plain",
+            "match": "(==|!=|<=|>=|\\+=|-=|\\*=|/=|//|[-+*/%^=<>])"
+        }
+    ]
+}
