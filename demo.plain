@@ -1,13 +1,27 @@
-# Practical Plain demo
+# Plain language demo - showing off the new features
 
+# --- Functions with parameters and return values ---
+to greet with someone
+    print "Hello, [someone]!"
+end
+
+to add_pair with x and y
+    give back x plus y
+end
+
+call greet with "World"
+set total to call add_pair with 3 and 4
+print "3 + 4 = [total]"
+
+# --- Lists & iteration ---
 set numbers to list of 4 and 1 and 7 and 3 and 9 and 2
 
-print "All numbers:"
+print "All:"
 for each n in numbers
     print n
 end
 
-print "Every other one:"
+print "Every other:"
 for every other n in numbers
     print n
 end
@@ -17,24 +31,75 @@ for each n in numbers going backwards
     print n
 end
 
-print "Stats:"
-print count of numbers
+# --- Filter expression ---
+print "Only the big ones:"
+for each n in only the ones in numbers where it is greater than 3
+    print n
+end
+
+# --- Sort & reverse ---
+sort numbers
+print "Sorted:"
+print numbers
+
+reverse numbers
+print "Reversed:"
+print numbers
+
+# --- Aggregates ---
+print "Count: [count_n]"
+set count_n to count of numbers
+print count_n
 print sum of numbers
 print biggest in numbers
-print smallest in numbers
 print average of numbers
 
-# Lists of strings work the same way
+# --- String built-ins ---
+set name to "alice"
+print uppercase of name
+print length of name
+
+# --- Membership & range ---
+set age to 25
+if age is between 18 and 65 then
+    print "Working age"
+end
+
+set color to "blue"
+if color is one of list of "red" and "blue" and "green" then
+    print "Primary-ish color"
+end
+
+# --- Boolean and / or ---
+if age is greater than 18 and color is equal to "blue" then
+    print "Adult who likes blue"
+end
+
+# --- List mutation ---
 set names to list of "Alice" and "Bob" and "Carol"
 add "Dave" to names
-
-print "Everyone:"
+remove "Bob" from names
+print "Remaining:"
 for each name in names
     print name
 end
 
-print "Random pick:"
-print random in names
+# --- stop / skip in loops ---
+print "1 to 10, skip 5, stop at 8:"
+set i to 0
+while i is less than 10
+    add 1 to i
+    if i is equal to 5 then
+        skip
+    end
+    if i is equal to 8 then
+        stop
+    end
+    print i
+end
 
+# --- Random ---
+set pick to random in names
+print "Random name: [pick]"
 print "Random number 1 to 100:"
 print random from 1 to 100
