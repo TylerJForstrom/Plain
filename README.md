@@ -42,6 +42,18 @@ to two_sum with nums and target
 end
 ```
 
+## Try it in your browser
+
+The `web/` folder is a full demo site — a playground that runs the real
+interpreter in your browser (via Pyodide), practice problems with explained
+solutions, and searchable docs with a built-in assistant. It's completely
+static and free to host:
+
+- **Deploy:** connect this repo to Netlify — `netlify.toml` already points
+  the build at `web/` and copies the interpreter in.
+- **Run locally:** `python -m http.server 8765 --directory web` after
+  copying `plain.py` into `web/`, then open `http://localhost:8765`.
+
 ## Running Plain
 
 You need Python installed. Then:
