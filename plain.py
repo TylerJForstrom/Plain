@@ -58,19 +58,24 @@ TOKEN_RE = re.compile(
     r'|(\d+(?:\.\d+)?)'
     r'|([A-Za-z_]\w*)'
     r'|(\n)'
-    r'|([ \t]+|\#[^\n]*)'
+    r'|([ \t\r]+|\#[^\n]*)'
+    r'|(==|!=|<=|>=|\+=|-=|\*=|/=|//|[-+*/%^()\[\]{},:=<>])'
+    r'|(\S)'
 )
 
 
 def tokenize(src):
     toks = []
     line = 1
+    depth = 0  # inside ( [ { ... } ] ) newlines don't end the statement
     for m in TOKEN_RE.finditer(src):
-        s, num, word, nl, skip = m.groups()
+        s, num, word, nl, skip, op, bad = m.groups()
         if skip is not None:
             continue
+        if bad is not None:
+            raise SyntaxError(f"Line {line}: I don't understand the symbol '{bad}'")
         if nl is not None:
-            if toks and toks[-1][0] != "NL":
+            if depth == 0 and toks and toks[-1][0] != "NL":
                 toks.append(("NL", None, line))
             line += 1
             continue
@@ -78,6 +83,12 @@ def tokenize(src):
             toks.append(("STR", s, line))
         elif num is not None:
             toks.append(("NUM", float(num) if "." in num else int(num), line))
+        elif op is not None:
+            if op in "([{":
+                depth += 1
+            elif op in ")]}":
+                depth = max(0, depth - 1)
+            toks.append(("OP", op, line))
         elif word is not None:
             lw = word.lower()
             if lw in KEYWORDS:
@@ -99,6 +110,11 @@ class Parser:
 
     def peek(self):
         return self.t[self.i][:2]
+
+    def peek2(self):
+        if self.i + 1 < len(self.t):
+            return self.t[self.i + 1][:2]
+        return ("EOF", None)
 
     def line(self):
         return self.t[self.i][2]
@@ -171,20 +187,33 @@ def parse_stmt_inner(p):
 
     if tok == ("KW", "set"):
         p.eat()
-        # set item N of NAME to VALUE
+        # set item N of NAME to VALUE   (also: set item N of item M of NAME ...)
         if p.accept("KW", "item"):
-            idx = parse_expr(p)
+            keys = [parse_expr(p)]
             p.expect("KW", "of")
+            while p.accept("KW", "item"):
+                keys.append(parse_expr(p))
+                p.expect("KW", "of")
             name = p.expect("ID")[1]
-            p.expect("KW", "to")
-            return ("setitem", name, idx, parse_expr(p))
+            keys.reverse()
+            if not p.accept("OP", "="):
+                p.expect("KW", "to")
+            return ("setpath", name, keys, parse_expr(p))
         name = p.expect("ID")[1]
-        # set NAME at KEY to VALUE   (lookups and lists)
-        if p.accept("KW", "at"):
-            key = parse_atom(p)
+        # set NAME at KEY to VALUE / set NAME[KEY] to VALUE  (lookups and lists)
+        keys = []
+        while True:
+            if p.accept("KW", "at"):
+                keys.append(parse_atom_base(p))
+            elif p.accept("OP", "["):
+                keys.append(parse_expr(p))
+                p.expect("OP", "]")
+            else:
+                break
+        if not p.accept("OP", "="):
             p.expect("KW", "to")
-            return ("setitem", name, key, parse_expr(p))
-        p.expect("KW", "to")
+        if keys:
+            return ("setpath", name, keys, parse_expr(p))
         return ("set", name, parse_expr(p))
 
     if tok == ("KW", "add"):
@@ -222,8 +251,9 @@ def parse_stmt_inner(p):
     if tok == ("KW", "expect"):
         p.eat()
         left = parse_expr(p)
-        p.expect("KW", "to")
-        p.expect("KW", "equal")
+        if not p.accept("OP", "=="):
+            p.expect("KW", "to")
+            p.expect("KW", "equal")
         right = parse_expr(p)
         return ("expect", left, right)
 
@@ -339,6 +369,41 @@ def parse_stmt_inner(p):
         path = parse_expr(p)
         return ("save", val, path)
 
+    # Statements that start with a plain name:
+    #   x = 5      x += 1     nums[2] = 9     grid[r][c] = 0     f(a, b)
+    if tok[0] == "ID":
+        ln = p.line()
+        name = p.eat()[1]
+        if p.accept("OP", "("):
+            args = []
+            if not p.accept("OP", ")"):
+                args.append(parse_expr(p))
+                while p.accept("OP", ","):
+                    args.append(parse_expr(p))
+                p.expect("OP", ")")
+            return ("exprstmt", ("userfn", name, args))
+        keys = []
+        while p.accept("OP", "["):
+            keys.append(parse_expr(p))
+            p.expect("OP", "]")
+        if keys:
+            if not p.accept("OP", "="):
+                p.expect("KW", "to")
+            return ("setpath", name, keys, parse_expr(p))
+        if p.accept("OP", "="):
+            return ("set", name, parse_expr(p))
+        if p.accept("OP", "+="):
+            return ("add", name, parse_expr(p))
+        if p.accept("OP", "-="):
+            return ("sub", name, parse_expr(p))
+        if p.accept("OP", "*="):
+            return ("set", name, ("bin", "*", ("var", name), parse_expr(p)))
+        if p.accept("OP", "/="):
+            return ("set", name, ("bin", "/", ("var", name), parse_expr(p)))
+        raise SyntaxError(suggest(
+            f"Line {ln}: I don't understand '{name}' here. To change it, "
+            f"write 'set {name} to ...' or '{name} = ...'", ("ID", name)))
+
     raise SyntaxError(suggest(
         f"Line {p.line()}: I don't understand '{tok[1] or tok[0]}'", tok))
 
@@ -373,7 +438,17 @@ def parse_cond(p):
 
 
 def parse_cmp(p):
+    # "if not done then ..."
+    if p.accept("KW", "not"):
+        return ("logic", "not", parse_cmp(p), None)
     left = parse_expr(p)
+
+    # symbol comparisons: == (or =), !=, <, >, <=, >=
+    for sym, op in (("==", "eq"), ("=", "eq"), ("!=", "ne"),
+                    ("<=", "le"), (">=", "ge"), ("<", "lt"), (">", "gt")):
+        if p.accept("OP", sym):
+            return ("cmp", op, left, parse_expr(p))
+
     # word-style checks that don't need 'is':
     #   X contains Y / X has Y / X starts with Y / X ends with Y
     if p.accept("KW", "contains") or p.accept("KW", "has"):
@@ -384,7 +459,11 @@ def parse_cmp(p):
     if p.accept("KW", "ends"):
         p.expect("KW", "with")
         return ("endswith", left, parse_expr(p))
-    p.expect("KW", "is")
+
+    if not p.accept("KW", "is"):
+        # No comparison at all: the value itself is the condition
+        # (so "if done then" works when done is true/false).
+        return left
     negate = bool(p.accept("KW", "not"))
     if p.accept("KW", "at"):
         if p.accept("KW", "least"):
@@ -434,25 +513,40 @@ def parse_cmp(p):
 def parse_expr(p):
     left = parse_term(p)
     while True:
-        if p.accept("KW", "plus"):
+        if p.accept("KW", "plus") or p.accept("OP", "+"):
             left = ("bin", "+", left, parse_term(p))
-        elif p.accept("KW", "minus"):
+        elif p.accept("KW", "minus") or p.accept("OP", "-"):
             left = ("bin", "-", left, parse_term(p))
         else:
             return left
 
 
 def parse_term(p):
-    left = parse_atom(p)
+    left = parse_power(p)
     while True:
         if p.accept("KW", "multiplied"):
             p.expect("KW", "by")
-            left = ("bin", "*", left, parse_atom(p))
+            left = ("bin", "*", left, parse_power(p))
+        elif p.accept("OP", "*"):
+            left = ("bin", "*", left, parse_power(p))
         elif p.accept("KW", "divided"):
             p.expect("KW", "by")
-            left = ("bin", "/", left, parse_atom(p))
+            left = ("bin", "/", left, parse_power(p))
+        elif p.accept("OP", "/"):
+            left = ("bin", "/", left, parse_power(p))
+        elif p.accept("OP", "//"):
+            left = ("bin", "//", left, parse_power(p))
+        elif p.accept("OP", "%"):
+            left = ("call", "mod", [left, parse_power(p)])
         else:
             return left
+
+
+def parse_power(p):
+    left = parse_atom(p)
+    if p.accept("OP", "^"):
+        return ("bin", "**", left, parse_power(p))
+    return left
 
 
 # One-argument built-in expressions: (keyword, internal-name, separator-keyword)
@@ -477,13 +571,54 @@ UNARY_BUILTINS = [
 
 def parse_atom(p):
     node = parse_atom_base(p)
-    # postfix indexing: LIST at 2, LOOKUP at "key", TEXT at 1
-    while p.accept("KW", "at"):
-        node = ("index", node, parse_atom_base(p))
-    return node
+    while True:
+        # postfix indexing: LIST at 2, LOOKUP at "key", nums[2], d["key"]
+        if p.accept("KW", "at"):
+            node = ("index", node, parse_atom_base(p))
+        elif p.accept("OP", "["):
+            node = ("index", node, parse_expr(p))
+            p.expect("OP", "]")
+        elif p.accept("ID", "squared"):
+            node = ("bin", "*", node, node)
+        else:
+            return node
 
 
 def parse_atom_base(p):
+    # ( grouping ) - may hold a value or a whole condition
+    if p.accept("OP", "("):
+        node = parse_cond(p)
+        p.expect("OP", ")")
+        return node
+
+    # [1, 2, 3] list literal (nests: [[1, 2], [3, 4]])
+    if p.accept("OP", "["):
+        if p.accept("OP", "]"):
+            return ("list", [])
+        items = [parse_expr(p)]
+        while p.accept("OP", ","):
+            items.append(parse_expr(p))
+        p.expect("OP", "]")
+        return ("list", items)
+
+    # {"key": value} lookup literal
+    if p.accept("OP", "{"):
+        if p.accept("OP", "}"):
+            return ("dict", [])
+        pairs = []
+        while True:
+            k = parse_expr(p)
+            p.expect("OP", ":")
+            pairs.append((k, parse_expr(p)))
+            if not p.accept("OP", ","):
+                break
+        p.expect("OP", "}")
+        return ("dict", pairs)
+
+    # unary minus: -5
+    if p.accept("OP", "-"):
+        return ("bin", "-", ("num", 0), parse_atom(p))
+
     # list literals
     if p.accept("KW", "list"):
         p.expect("KW", "of")
@@ -622,9 +757,9 @@ def parse_atom_base(p):
         name = p.expect("ID")[1]
         args = []
         if p.accept("KW", "with"):
-            args.append(parse_atom(p))
+            args.append(parse_expr(p))
             while p.accept("KW", "and"):
-                args.append(parse_atom(p))
+                args.append(parse_expr(p))
         return ("userfn", name, args)
 
     # 'it' is the implicit element inside a filter
@@ -635,7 +770,17 @@ def parse_atom_base(p):
     tok = p.eat()
     if tok[0] == "NUM": return ("num", tok[1])
     if tok[0] == "STR": return ("str", tok[1])
-    if tok[0] == "ID":  return ("var", tok[1])
+    if tok[0] == "ID":
+        # Python-style call: name(arg, arg)
+        if p.accept("OP", "("):
+            args = []
+            if not p.accept("OP", ")"):
+                args.append(parse_expr(p))
+                while p.accept("OP", ","):
+                    args.append(parse_expr(p))
+                p.expect("OP", ")")
+            return ("userfn", tok[1], args)
+        return ("var", tok[1])
     if tok == ("KW", "true"):  return ("num", 1)
     if tok == ("KW", "false"): return ("num", 0)
     raise SyntaxError(suggest(
@@ -722,11 +867,17 @@ def evaluate(node, env):
             if bv == 0:
                 raise RuntimeError("You can't divide by zero.")
             return av / bv
+        if op == "//":
+            if bv == 0:
+                raise RuntimeError("You can't divide by zero.")
+            return av // bv
+        if op == "**":
+            return av ** bv
     if t == "cmp":
         _, op, a, b = node
         av, bv = evaluate(a, env), evaluate(b, env)
-        return {"eq": av == bv, "gt": av > bv, "lt": av < bv,
-                "ge": av >= bv, "le": av <= bv}[op]
+        return {"eq": av == bv, "ne": av != bv, "gt": av > bv,
+                "lt": av < bv, "ge": av >= bv, "le": av <= bv}[op]
     if t == "index":
         return index_get(evaluate(node[1], env), evaluate(node[2], env))
     if t == "dict":
@@ -787,7 +938,10 @@ def evaluate(node, env):
         if name == "randitem":  return random.choice(x)
         if name == "sqrt":      return math.sqrt(x)
         if name == "abs":       return abs(x)
-        if name == "round":     return round(x)
+        if name == "round":
+            # round halves away from zero, like school math (Python's
+            # round() would give round(4.5) == 4)
+            return int(math.floor(x + 0.5)) if x >= 0 else int(math.ceil(x - 0.5))
         if name == "split":     return str(vals[0]).split(vals[1])
         if name == "join":      return str(vals[1]).join(to_str(v) for v in vals[0])
         if name == "take_first":
@@ -877,12 +1031,15 @@ def run(node, env):
             raise PlainRuntimeError(f"Line {node[1]}: {e}") from None
     elif t == "set":
         env[node[1]] = evaluate(node[2], env)
-    elif t == "setitem":
-        _, name, key_n, val_n = node
+    elif t == "setpath":
+        _, name, key_nodes, val_n = node
         if name not in env:
             raise NameError(f"You haven't set '{name}' yet.")
         target = env[name]
-        key = evaluate(key_n, env)
+        keys = [evaluate(k, env) for k in key_nodes]
+        for k in keys[:-1]:
+            target = index_get(target, k)
+        key = keys[-1]
         val = evaluate(val_n, env)
         if isinstance(target, dict):
             target[key] = val

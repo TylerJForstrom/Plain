@@ -202,5 +202,89 @@ to fact with n
 end
 expect call fact with 5 to equal 120
 
+# --- Operator style (symbols work everywhere words do) ---
+set x to (2 + 3) * 4
+expect x to equal 20
+x = 100
+expect x to equal 100
+x += 5
+expect x to equal 105
+x -= 5
+x *= 2
+x /= 4
+expect x to equal 50
+expect 7 % 3 to equal 1
+expect 7 // 2 to equal 3
+expect 2 ^ 10 to equal 1024
+expect 3 squared to equal 9
+expect -4 + 10 to equal 6
+expect 10 - (2 + 3) to equal 5
+expect "ab" + "cd" to equal "abcd"
+expect round of (9 / 2) to equal 5
+
+set flag to 0
+if 3 < 5 then
+    flag = 1
+end
+expect flag == 1
+
+set flag to 0
+if 5 >= 5 and 4 != 3 then
+    flag = 1
+end
+expect flag == 1
+
+set flag to 0
+if (1 > 2) or (2 > 1) then
+    flag = 1
+end
+expect flag == 1
+
+# truthy conditions: a true/false value works by itself
+set done to false
+set flag to 0
+if not done then
+    flag = 1
+end
+expect flag == 1
+set done to true
+if done then
+    flag = 2
+end
+expect flag == 2
+
+# --- Bracket lists and brace lookups ---
+set nums to [3, 1, 2]
+expect nums to equal list of 3 and 1 and 2
+expect nums[2] to equal 1
+nums[2] = 9
+expect nums[2] to equal 9
+expect count of [] to equal 0
+
+set ages to {"amy": 30, "bob": 25}
+expect ages["amy"] to equal 30
+ages["carl"] = 41
+expect count of ages to equal 3
+expect count of {} to equal 0
+
+# --- Python-style function calls ---
+to triple with n
+    give back n * 3
+end
+expect triple(7) to equal 21
+expect call triple with 7 to equal 21
+expect triple(2 + 5) to equal 21
+
+to shout
+    give back "HEY"
+end
+expect shout() to equal "HEY"
+
+# call ... with now takes whole expressions as arguments
+to add_pair with a and b
+    give back a + b
+end
+expect call add_pair with 2 + 3 and 10 to equal 15
+
 print ""
 print "Tests finished. Every line above should say OK."
