@@ -47,13 +47,19 @@ end
 You need Python installed. Then:
 
 ```
-python plain.py program.plain     # run a file
-python plain.py                   # interactive mode (type code, see results)
-python plain.py tests.plain       # run the language's own test suite
+python plain.py program.plain          # run a file
+python plain.py program.plain --trace  # narrate every line as it runs
+python plain.py                        # interactive mode (type code, see results)
+python plain.py tests.plain            # run the language's own test suite
 ```
 
+`--trace` is made for learning — it shows each line as it runs and how
+variables change, so you can watch a loop accumulate step by step.
+
 The `examples/` folder has solved LeetCode problems to learn from, from
-easy (fizzbuzz, two_sum, palindrome) up to medium (number_of_islands).
+easy (fizzbuzz, two_sum, palindrome) up to medium (number_of_islands,
+merge_intervals). The `vscode-plain/` folder is a VS Code extension that
+colors `.plain` files (see its README for the one-line install).
 
 ## The basics
 
@@ -270,6 +276,14 @@ for each ch at position i in letters of word
 end
 ```
 
+Comparing neighbors (is it sorted? where are the gaps?) has its own loop:
+
+```
+for each pair of x and y in [1, 4, 9]     # visits (1,4) then (4,9)
+    print y - x
+end
+```
+
 **Nested loops in one line** — something even Python can't do this simply.
 Join loops with `and`; one `end` closes them all:
 
@@ -312,6 +326,19 @@ to fact with n
     give back n * fact(n - 1)
 end
 ```
+
+And they can give back several values at once — catch them with
+`set ... and ...`:
+
+```
+to minmax with nums
+    give back smallest in nums and biggest in nums
+end
+
+set lo and hi to minmax([4, 9, 1])
+```
+
+(That unpacking works with any list: `set a and b to [b, a]` swaps.)
 
 ### Checking your answers
 
