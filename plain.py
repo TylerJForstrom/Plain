@@ -64,16 +64,30 @@ TOKEN_RE = re.compile(
 )
 
 
+# Characters people paste in from Word / Google Docs, and what they meant.
+CONFUSABLES = {
+    "“": 'a straight quote "', "”": 'a straight quote "',
+    "‘": "a straight quote '", "’": "a straight quote '",
+    "–": "a minus sign -", "—": "a minus sign -",
+    "×": "a star * for multiplying", "÷": "a slash / for dividing",
+}
+
+
 def tokenize(src):
     toks = []
     line = 1
     depth = 0  # inside ( [ { ... } ] ) newlines don't end the statement
-    for m in TOKEN_RE.finditer(src):
+    for m in TOKEN_RE.finditer(src.lstrip("\ufeff")):
         s, num, word, nl, skip, op, bad = m.groups()
         if skip is not None:
             continue
         if bad is not None:
-            raise SyntaxError(f"Line {line}: I don't understand the symbol '{bad}'")
+            if bad in CONFUSABLES:
+                raise SyntaxError(
+                    f"Line {line}: That looks like a character pasted from a "
+                    f"word processor. Use {CONFUSABLES[bad]} instead.")
+            raise SyntaxError(
+                f"Line {line}: I don't understand the symbol {bad!r}")
         if nl is not None:
             if depth == 0 and toks and toks[-1][0] != "NL":
                 toks.append(("NL", None, line))
@@ -1232,7 +1246,7 @@ def run(node, env):
             pass
     elif t == "readlines":
         path = evaluate(node[2], env)
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8-sig") as f:
             env[node[1]] = [line.rstrip("\n") for line in f]
     elif t == "save":
         val = evaluate(node[1], env)
@@ -1320,10 +1334,16 @@ def repl():
 
 def main():
     sys.setrecursionlimit(6000)
+    # Never let an unprintable character crash the program's own output.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except AttributeError:
+            pass
     if len(sys.argv) < 2:
         repl()
         return
-    with open(sys.argv[1], "r", encoding="utf-8") as f:
+    with open(sys.argv[1], "r", encoding="utf-8-sig") as f:
         src = f.read()
     env = {}
     try:
