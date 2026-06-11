@@ -31,8 +31,22 @@
 <main id="tab-playground" class="tab-panel active">
   <section class="hero">
     <h1>Code that reads like English.</h1>
-    <p>Plain sits between block coding and Python — real typed-out programs, in words you already know. Runs right here in your browser.</p>
+    <p>Plain sits between block coding and Python — real typed-out programs, in words you already know. It runs right here in your browser on its own bytecode VM: press Run, step through line by line with the debugger, or peek at the compiled bytecode.</p>
   </section>
+
+  <div id="problem-banner" class="problem-banner" hidden>
+    <div class="problem-banner-head">
+      <span id="problem-banner-pill" class="pill"></span>
+      <strong id="problem-banner-title"></strong>
+      <div class="bar-spacer"></div>
+      <button id="problem-banner-close" class="banner-close" aria-label="Hide the problem">✕</button>
+    </div>
+    <p id="problem-banner-statement" class="problem-banner-statement"></p>
+    <details class="problem-banner-hint">
+      <summary>Need a hint?</summary>
+      <p id="problem-banner-hint-text"></p>
+    </details>
+  </div>
 
   <div class="playground">
     <div class="pane editor-pane">

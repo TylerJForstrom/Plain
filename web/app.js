@@ -51,7 +51,29 @@ if (typeof CodeMirror !== "undefined") {
   editor = { getValue: () => ta.value, setValue: (v) => (ta.value = v), refresh: () => {} };
 }
 
-function loadIntoEditor(code) {
+/* Problem banner: keeps the selected practice problem visible while coding. */
+const problemBanner = document.getElementById("problem-banner");
+const bannerPill = document.getElementById("problem-banner-pill");
+const bannerTitle = document.getElementById("problem-banner-title");
+const bannerStatement = document.getElementById("problem-banner-statement");
+const bannerHint = document.getElementById("problem-banner-hint-text");
+document.getElementById("problem-banner-close").addEventListener("click", () => {
+  problemBanner.hidden = true;
+});
+
+function showProblemBanner(p) {
+  bannerPill.className = "pill " + p.difficulty;
+  bannerPill.textContent = p.difficulty;
+  bannerTitle.textContent = p.title;
+  bannerStatement.textContent = p.statement;
+  bannerHint.textContent = p.hint;
+  bannerHint.closest("details").open = false;
+  problemBanner.hidden = false;
+}
+
+function loadIntoEditor(code, problem) {
+  if (problem) showProblemBanner(problem);
+  else problemBanner.hidden = true;
   editor.setValue(code);
   location.hash = "playground";
   showTab("playground");
@@ -363,8 +385,8 @@ function showProblem(p) {
     detailEl.hidden = true;
     listEl.hidden = false;
   });
-  detailEl.querySelector('[data-act="try"]').addEventListener("click", () => loadIntoEditor(p.starter));
-  detailEl.querySelector('[data-act="try-solution"]').addEventListener("click", () => loadIntoEditor(p.solution));
+  detailEl.querySelector('[data-act="try"]').addEventListener("click", () => loadIntoEditor(p.starter, p));
+  detailEl.querySelector('[data-act="try-solution"]').addEventListener("click", () => loadIntoEditor(p.solution, p));
   window.scrollTo({ top: 0 });
 }
 renderProblemList();
