@@ -1782,7 +1782,9 @@ def coerce(s):
  OP_RAISESTOP, OP_RAISESKIP, OP_EXIT, OP_HALT, OP_EXPREND,
  # superinstructions, emitted only by the optimizer
  OP_BIN_LC, OP_BIN_LL, OP_BIN_XC, OP_CMP_LC, OP_CMP_XC,
- OP_ADDVAR_C) = range(74)
+ OP_ADDVAR_C,
+ # statement boundary marker, kept only in debug compiles (Stepper)
+ OP_PAUSE) = range(75)
 
 OP_NAMES = {v: k[3:] for k, v in list(globals().items()) if k.startswith("OP_")}
 
@@ -1950,10 +1952,11 @@ def _optimize(instrs, starts, lines):
 
 
 class _Compiler:
-    def __init__(self):
+    def __init__(self, debug=False):
         self.ins = []        # [op, arg] pairs; labels resolved at the end
         self.blocks = []     # compile-time stack of open loops / trys
         self.iters = 0       # how many runtime iterators are live here
+        self.debug = debug   # keep statement boundaries as PAUSE markers
 
     # ---- emit helpers ----
 
@@ -1970,12 +1973,14 @@ class _Compiler:
         raw = self.ins
         # New index of each raw position once SET_LINE markers are gone.
         # A dropped marker maps to the next kept instruction, which is
-        # exactly where its line starts applying.
+        # exactly where its line starts applying. In debug mode the
+        # markers stay in the stream as PAUSE instructions, so the
+        # Stepper can stop at every statement boundary.
         new_index = []
         n = 0
         for op, _ in raw:
             new_index.append(n)
-            if op != OP_SET_LINE:
+            if op != OP_SET_LINE or self.debug:
                 n += 1
         end = n
 
@@ -1992,6 +1997,8 @@ class _Compiler:
                 elif not lines or lines[-1] != arg:
                     starts.append(pos)
                     lines.append(arg)
+                if self.debug:
+                    instrs.append((OP_PAUSE, arg))
                 continue
             if isinstance(arg, _Lbl):
                 arg = m(arg.pos)
@@ -2221,7 +2228,7 @@ class _Compiler:
             self.emit(OP_SAVE)
         elif t == "def":
             _, name, params, body = n
-            code = _compile_fn_code(params, body, name)
+            code = _compile_fn_code(params, body, name, self.debug)
             self.emit(OP_DEF, (name, params, code))
         elif t == "exprstmt":
             self.expr(n[1])
@@ -2391,16 +2398,16 @@ def _compile_expr_code(node, name):
     return c.finalize(name)
 
 
-def _compile_fn_code(params, body, name):
-    c = _Compiler()
+def _compile_fn_code(params, body, name, debug=False):
+    c = _Compiler(debug)
     c.block(body)
     c.emit(OP_CONST, None)
     c.emit(OP_RETURN)
     return c.finalize(name)
 
 
-def compile_program(ast):
-    c = _Compiler()
+def compile_program(ast, debug=False):
+    c = _Compiler(debug)
     c.block(ast[1])
     c.emit(OP_HALT)
     return c.finalize("main")
@@ -2488,7 +2495,10 @@ def _vm_unwind(frames, env, exc):
     raise exc
 
 
-def _vm_exec(frames, env):
+_PAUSED = object()   # returned by _vm_exec when a debug step completes
+
+
+def _vm_exec(frames, env, pausing=False):
     f = frames[-1]
     env_get = env.get
     _MISSING = _SENTINEL
@@ -2919,6 +2929,13 @@ def _vm_exec(frames, env):
                 elif op == OP_DEF:
                     name, params, code = arg
                     env.setdefault("__fns__", {})[name] = (params, code)
+                elif op == OP_PAUSE:
+                    # Statement boundary in debug-compiled code. Pauses
+                    # only at the Stepper's level — not inside nested
+                    # expression chunks (filter / map / sort key).
+                    if pausing:
+                        f.ip = ip
+                        return _PAUSED
                 elif op == OP_RAISESTOP:
                     raise StopLoop()
                 elif op == OP_RAISESKIP:
@@ -2995,6 +3012,72 @@ def disassemble(code):
 
 def disassemble_source(src):
     return disassemble(compile_program(parse(tokenize(src))))
+
+
+# ---- step debugger (powers the playground's Debug mode) ----
+
+class Stepper:
+    """Statement-level stepping over the VM. The program is compiled
+    with PAUSE markers kept at every statement boundary; each step()
+    runs until the next marker and reports the paused world: current
+    line, every variable, the call stack, and the upcoming bytecode.
+    The tree-walker can't do this — it would be stuck halfway down a
+    Python call stack — which is exactly why the VM exists."""
+
+    def __init__(self, src):
+        ast = parse(tokenize(src))                  # may raise SyntaxError
+        self.frames = [_Frame(compile_program(ast, debug=True))]
+        self.env = {}
+        self.finished = False
+
+    def step(self):
+        """Run one statement; report the state at the next boundary."""
+        return self._go(pausing=True)
+
+    def run_to_end(self):
+        """Run the rest of the program without pausing."""
+        return self._go(pausing=False)
+
+    def _go(self, pausing):
+        if self.finished:
+            return self._state(done=True)
+        try:
+            r = _vm_exec(self.frames, self.env, pausing)
+        except (PlainRuntimeError, NameError, RuntimeError) as e:
+            self.finished = True
+            return self._state(done=True, error=f"Oops: {e}")
+        except ReturnValue:
+            self.finished = True
+            return self._state(
+                done=True, error="Oops: 'give back' only works inside a function.")
+        except (StopLoop, SkipLoop):
+            self.finished = True
+            return self._state(
+                done=True, error="Oops: 'stop' and 'skip' only work inside a loop.")
+        except SystemExit:
+            self.finished = True
+            return self._state(done=True)
+        if r is _PAUSED:
+            return self._state(done=False)
+        self.finished = True
+        return self._state(done=True)
+
+    def _state(self, done, error=None):
+        st = {"done": done, "error": error, "line": None,
+              "vars": {}, "callstack": [], "bytecode": []}
+        if done:
+            return st
+        f = self.frames[-1]
+        st["line"] = f.code.instrs[f.ip - 1][1]   # the PAUSE we stopped on
+        st["vars"] = {k: to_str(v) for k, v in self.env.items()
+                      if not (isinstance(k, str) and k.startswith("__"))}
+        st["callstack"] = [fr.code.name for fr in self.frames]
+        instrs = f.code.instrs
+        for j in range(f.ip, min(f.ip + 6, len(instrs))):
+            op, arg = instrs[j]
+            st["bytecode"].append(
+                f"{j:>4}  {OP_NAMES[op]:<11} {_fmt_arg(op, arg, [])}".rstrip())
+        return st
 
 
 # ============================================================
