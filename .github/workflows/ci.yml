@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Language test suite (bytecode VM)
+        run: python plain.py tests.plain
+
+      - name: Language test suite (AST engine)
+        run: python plain.py tests.plain --engine=ast
+
+      - name: Differential tests — both engines byte-identical
+        run: python difftest.py
+
+      - name: Benchmarks (smoke test, asserts engines agree)
+        run: python bench.py
