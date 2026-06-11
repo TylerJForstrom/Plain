@@ -59,10 +59,12 @@ static and free to host:
 You need Python installed. Then:
 
 ```
-python plain.py program.plain          # run a file
-python plain.py program.plain --trace  # narrate every line as it runs
-python plain.py                        # interactive mode (type code, see results)
-python plain.py tests.plain            # run the language's own test suite
+python plain.py program.plain              # run a file (bytecode VM)
+python plain.py program.plain --trace      # narrate every line as it runs
+python plain.py program.plain --disasm     # show the compiled bytecode
+python plain.py program.plain --engine=ast # use the tree-walking interpreter
+python plain.py                            # interactive mode (type code, see results)
+python plain.py tests.plain                # run the language's own test suite
 ```
 
 `--trace` is made for learning — it shows each line as it runs and how
@@ -72,6 +74,54 @@ The `examples/` folder has solved LeetCode problems to learn from, from
 easy (fizzbuzz, two_sum, palindrome) up to medium (number_of_islands,
 merge_intervals). The `vscode-plain/` folder is a VS Code extension that
 colors `.plain` files (see its README for the one-line install).
+
+## Under the hood: a bytecode compiler and VM
+
+Plain has two engines that are guaranteed to behave identically:
+
+- **The bytecode VM (default).** Programs are parsed to an AST, the AST
+  is compiled to flat bytecode (one instruction list per function plus
+  the main program), and a stack-based virtual machine executes it with
+  explicit call frames. `stop`, `skip`, and `give back` compile to plain
+  jumps — no exceptions on the hot path. Each compiled chunk carries a
+  line-number table (like CPython's), so tracking the current line costs
+  nothing until an error actually needs to report one.
+- **The tree-walking interpreter** (`--engine=ast`). The original
+  engine: it walks the AST directly and uses Python exceptions for
+  control flow. `--trace` always uses this engine, because its recursive
+  shape matches the line-by-line narration.
+
+Identical behavior isn't an aspiration, it's a test gate:
+`python difftest.py` runs the full test suite, the demo script, every
+example program, and ~35 corner cases (error messages with line numbers,
+`try`/`otherwise`, `stop` that crosses a function call, parameter
+shadowing, and so on) through **both** engines and requires byte-for-byte
+identical output and exit codes. Both engines also share one
+implementation of the arithmetic, comparison, and built-in functions, so
+error text can't drift between them.
+
+`--disasm` prints the human-readable bytecode for any program — the web
+playground has a "Show bytecode" toggle that does the same thing.
+
+### Measured speed
+
+From `python bench.py` (Python 3.12, Windows, best of 5 runs per
+engine; programs parsed once, output suppressed during timing —
+compiling to bytecode took ~0.1 ms per workload):
+
+| workload               |  AST engine | bytecode VM | speedup |
+| ---------------------- | ----------: | ----------: | ------: |
+| fib(18), recursive     |    143.3 ms |     43.6 ms |   3.29x |
+| loop arithmetic (200k) |    508.0 ms |    376.6 ms |   1.35x |
+| string building (20k)  |     57.2 ms |     49.8 ms |   1.15x |
+| list ops (40k)         |    145.3 ms |    137.0 ms |   1.06x |
+| lookup tally (30k)     |     85.9 ms |     81.6 ms |   1.05x |
+
+Honest summary: the VM shines on function-call-heavy code (calls become
+frame pushes instead of nested Python calls plus exception-based
+returns) and is a modest 1.05–1.4x on statement-heavy loops, where both
+engines spend most of their time in the same shared runtime helpers.
+Numbers vary a little run to run; rerun `bench.py` to reproduce.
 
 ## The basics
 
