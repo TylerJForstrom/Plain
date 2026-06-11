@@ -140,6 +140,7 @@ function bootWorker() {
   engineReady = false;
   runBtn.disabled = true;
   runBtn.textContent = "Loading engine…";
+  debugBtn.disabled = true;
   worker = new Worker("runner.js");
   worker.onmessage = (e) => {
     const m = e.data;
@@ -147,6 +148,7 @@ function bootWorker() {
       engineReady = true;
       runBtn.disabled = false;
       runBtn.textContent = "▶ Run";
+      debugBtn.disabled = false;
       if (outputEl.querySelector(".out-dim")) {
         outputEl.textContent = "";
         appendOutput("Ready! Press Run.\n", "out-dim");
@@ -162,6 +164,16 @@ function bootWorker() {
     } else if (m.type === "disasm-out") {
       appendOutput(m.text + "\n", "out-trace");
       appendOutput("── output ──\n", "out-dim");
+    } else if (m.type === "debug-started") {
+      if (m.ok) {
+        stepping = true;
+        worker.postMessage({ type: "debug-step" });
+      } else {
+        appendOutput(m.error + "\n", "out-err");
+        setDebugUI(false);
+      }
+    } else if (m.type === "debug-state") {
+      showDebugState(m.state);
     } else if (m.type === "done") {
       finishRun();
     }
@@ -174,7 +186,108 @@ function finishRun() {
   runBtn.hidden = false;
   stopBtn.hidden = true;
   runBtn.disabled = !engineReady;
+  debugBtn.disabled = !engineReady;
 }
+
+/* ========================= Debugger ========================= */
+const debugBtn = document.getElementById("debug-btn");
+const debugControls = document.getElementById("debug-controls");
+const stepBtn = document.getElementById("step-btn");
+const continueBtn = document.getElementById("continue-btn");
+const debugStopBtn = document.getElementById("debug-stop-btn");
+const debugPanel = document.getElementById("debug-panel");
+const debugVars = document.getElementById("debug-vars");
+const debugCallstack = document.getElementById("debug-callstack");
+const debugBytecode = document.getElementById("debug-bytecode");
+let debugging = false;
+let stepping = false;       // a step/continue request is in flight
+let debugLine = null;       // currently highlighted editor line
+
+function clearDebugLine() {
+  if (debugLine !== null && editor.removeLineClass) {
+    editor.removeLineClass(debugLine, "background", "debug-line");
+  }
+  debugLine = null;
+}
+
+function setDebugUI(on) {
+  debugging = on;
+  stepping = false;
+  debugControls.hidden = !on;
+  debugPanel.hidden = !on;
+  runBtn.hidden = on;
+  debugBtn.hidden = on;
+  if (editor.setOption) editor.setOption("readOnly", on);
+  if (!on) clearDebugLine();
+}
+
+function showDebugState(s) {
+  stepping = false;
+  clearTimeout(runTimeout);
+  if (s.error) {
+    for (const line of s.error.split("\n")) {
+      appendOutput(line + "\n", classifyLine(line) || "out-err");
+    }
+  }
+  if (s.done || s.error) {
+    if (s.done && !s.error) appendOutput("— program finished —\n", "out-dim");
+    setDebugUI(false);
+    return;
+  }
+  if (editor.addLineClass) {
+    clearDebugLine();
+    debugLine = s.line - 1;
+    editor.addLineClass(debugLine, "background", "debug-line");
+    editor.scrollIntoView({ line: debugLine, ch: 0 }, 60);
+  }
+  debugVars.innerHTML = "";
+  const names = Object.keys(s.vars);
+  if (!names.length) {
+    debugVars.innerHTML = '<span class="dv-val out-dim">(nothing set yet)</span>';
+  }
+  for (const k of names) {
+    const n = document.createElement("span");
+    n.className = "dv-name";
+    n.textContent = k;
+    const v = document.createElement("span");
+    v.className = "dv-val";
+    v.textContent = s.vars[k];
+    v.title = s.vars[k];
+    debugVars.append(n, v);
+  }
+  debugCallstack.textContent = s.callstack.join(" → ");
+  debugBytecode.textContent = s.bytecode.join("\n");
+}
+
+debugBtn.addEventListener("click", () => {
+  if (!engineReady || running || debugging) return;
+  outputEl.textContent = "";
+  setDebugUI(true);
+  worker.postMessage({ type: "debug-start", code: editor.getValue() });
+});
+
+stepBtn.addEventListener("click", () => {
+  if (!debugging || stepping) return;
+  stepping = true;
+  worker.postMessage({ type: "debug-step" });
+});
+
+continueBtn.addEventListener("click", () => {
+  if (!debugging || stepping) return;
+  stepping = true;
+  worker.postMessage({ type: "debug-continue" });
+  runTimeout = setTimeout(() => {
+    appendOutput("\nStopped after 20 seconds — maybe a loop that never ends?\n", "out-err");
+    setDebugUI(false);
+    hardStop();
+  }, 20000);
+});
+
+debugStopBtn.addEventListener("click", () => {
+  worker.postMessage({ type: "debug-stop" });
+  appendOutput("— debug stopped —\n", "out-dim");
+  setDebugUI(false);
+});
 
 runBtn.addEventListener("click", () => {
   if (!engineReady || running) return;

@@ -118,6 +118,20 @@ deep — and CI runs all of it on every push:
 `--disasm` prints the human-readable bytecode for any program — the web
 playground has a "Show bytecode" toggle that does the same thing.
 
+### The step debugger
+
+The playground's **Debug** button runs your program one statement at a
+time on the VM: the current line is highlighted in the editor, and a
+panel shows every variable, the call stack, and the next few bytecode
+instructions. Step into a function call and watch the call stack grow
+and the parameters appear; step out and watch them restore. Debug
+compiles keep each statement boundary in the bytecode as a pause
+marker; the VM stops there, reports the world, and resumes exactly
+where it left off — across loops, `try` blocks, and function frames.
+The tree-walking interpreter couldn't pause like this (it would be
+stuck halfway down a Python call stack), which is a nice demonstration
+of why bytecode VMs exist.
+
 ### Measured speed
 
 From `python bench.py` (Python 3.12, Windows, best of 5 runs per

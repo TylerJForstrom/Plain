@@ -48,7 +48,14 @@
         </label>
         <div class="bar-spacer"></div>
         <button id="run-btn" class="btn btn-run" disabled>Loading engine…</button>
+        <button id="debug-btn" class="btn btn-ghost" disabled
+          title="Step through the program line by line, watching variables change">🐞 Debug</button>
         <button id="stop-btn" class="btn btn-stop" hidden>Stop</button>
+        <span id="debug-controls" hidden>
+          <button id="step-btn" class="btn btn-run">Step ↓</button>
+          <button id="continue-btn" class="btn btn-ghost">Continue ▶</button>
+          <button id="debug-stop-btn" class="btn btn-stop">Stop</button>
+        </span>
       </div>
       <div id="editor-host"></div>
     </div>
@@ -57,6 +64,20 @@
         <span class="pane-title">Output</span>
         <div class="bar-spacer"></div>
         <button id="clear-btn" class="btn btn-ghost">Clear</button>
+      </div>
+      <div id="debug-panel" class="debug-panel" hidden>
+        <div class="debug-cell">
+          <h4>Variables</h4>
+          <div id="debug-vars" class="debug-vars"></div>
+        </div>
+        <div class="debug-cell">
+          <h4>Call stack</h4>
+          <div id="debug-callstack" class="debug-callstack"></div>
+        </div>
+        <div class="debug-cell debug-cell-wide">
+          <h4>Bytecode (next up)</h4>
+          <pre id="debug-bytecode" class="debug-bytecode"></pre>
+        </div>
       </div>
       <pre id="output"><span class="out-dim">The Plain engine is loading (first visit takes a few seconds)…</span></pre>
     </div>
