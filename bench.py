@@ -15,7 +15,7 @@ import time
 
 import plain
 
-RUNS = 5
+RUNS = 7
 
 WORKLOADS = {
     "fib(18) recursion": """
@@ -64,37 +64,50 @@ print tally at 0
 }
 
 
-def time_runs(fn):
-    times = []
-    for _ in range(RUNS):
-        gc_out, sys.stdout = sys.stdout, io.StringIO()
-        t0 = time.perf_counter()
-        try:
-            fn()
-        finally:
-            captured = sys.stdout.getvalue()
-            sys.stdout = gc_out
-        times.append(time.perf_counter() - t0)
-    times.sort()
-    return times[0], times[len(times) // 2], captured
+def time_once(fn):
+    gc_out, sys.stdout = sys.stdout, io.StringIO()
+    t0 = time.perf_counter()
+    try:
+        fn()
+    finally:
+        captured = sys.stdout.getvalue()
+        sys.stdout = gc_out
+    return time.perf_counter() - t0, captured
 
 
 def main():
-    print(f"{'workload':<26} {'ast':>9} {'vm':>9} {'speedup':>8}   (best of {RUNS})")
-    print("-" * 60)
+    print(f"{'workload':<26} {'ast':>9} {'vm':>9} {'vm+opt':>9} "
+          f"{'speedup':>8}   (best of {RUNS})")
+    print("-" * 72)
     for name, src in WORKLOADS.items():
         ast = plain.parse(plain.tokenize(src))
+        plain.OPTIMIZE = False
+        code_plain = plain.compile_program(ast)
+        plain.OPTIMIZE = True
         t0 = time.perf_counter()
-        code = plain.compile_program(ast)
+        code_opt = plain.compile_program(ast)
         compile_ms = (time.perf_counter() - t0) * 1000
 
-        best_a, _, out_a = time_runs(lambda: plain.run(ast, {}))
-        best_v, _, out_v = time_runs(
-            lambda: plain._vm_exec([plain._Frame(code)], {}))
-        assert out_a == out_v, f"engines disagree on {name}!"
+        # Engines run back-to-back inside each round so background load
+        # hits all three roughly equally; best-of filters the rest out.
+        best = {"ast": 9e9, "vm": 9e9, "opt": 9e9}
+        outs = {}
+        for _ in range(RUNS):
+            t, outs["ast"] = time_once(lambda: plain.run(ast, {}))
+            best["ast"] = min(best["ast"], t)
+            t, outs["vm"] = time_once(
+                lambda: plain._vm_exec([plain._Frame(code_plain)], {}))
+            best["vm"] = min(best["vm"], t)
+            t, outs["opt"] = time_once(
+                lambda: plain._vm_exec([plain._Frame(code_opt)], {}))
+            best["opt"] = min(best["opt"], t)
+        assert outs["ast"] == outs["vm"] == outs["opt"], \
+            f"engines disagree on {name}!"
 
-        print(f"{name:<26} {best_a * 1000:>7.1f}ms {best_v * 1000:>7.1f}ms "
-              f"{best_a / best_v:>7.2f}x   (compile {compile_ms:.1f}ms)")
+        print(f"{name:<26} {best['ast'] * 1000:>7.1f}ms "
+              f"{best['vm'] * 1000:>7.1f}ms {best['opt'] * 1000:>7.1f}ms "
+              f"{best['ast'] / best['opt']:>7.2f}x   "
+              f"(compile {compile_ms:.1f}ms)")
 
 
 if __name__ == "__main__":

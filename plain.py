@@ -1779,7 +1779,10 @@ def coerce(s):
  OP_SORT, OP_REVERSE, OP_READLINES, OP_SAVE,
  OP_TRY, OP_LOOP, OP_POPBLOCK, OP_POPITERS,
  OP_FORPREP, OP_RANGEPREP, OP_PAIRPREP, OP_REPEATPREP, OP_FORNEXT,
- OP_RAISESTOP, OP_RAISESKIP, OP_EXIT, OP_HALT, OP_EXPREND) = range(68)
+ OP_RAISESTOP, OP_RAISESKIP, OP_EXIT, OP_HALT, OP_EXPREND,
+ # superinstructions, emitted only by the optimizer
+ OP_BIN_LC, OP_BIN_LL, OP_BIN_XC, OP_CMP_LC, OP_CMP_XC,
+ OP_ADDVAR_C) = range(74)
 
 OP_NAMES = {v: k[3:] for k, v in list(globals().items()) if k.startswith("OP_")}
 
@@ -1789,6 +1792,10 @@ OP_NAMES = {v: k[3:] for k, v in list(globals().items()) if k.startswith("OP_")}
 MAX_FRAMES = 700
 
 _SENTINEL = object()   # tells a missing variable apart from a stored None
+
+# The peephole optimizer (constant folding, dead jumps, superinstructions).
+# bench.py flips this off to measure how much the optimizer buys.
+OPTIMIZE = True
 
 
 class Code:
@@ -1819,6 +1826,127 @@ class _Lbl:
 
     def __init__(self):
         self.pos = None
+
+
+# ---- peephole optimizer ----
+
+_JUMPY = (OP_JUMP, OP_JF, OP_JF_KEEP, OP_JT_KEEP, OP_TRY)
+
+
+def _targets_of(op, arg):
+    if op in _JUMPY:
+        return (arg,)
+    if op == OP_LOOP:
+        return (arg[0], arg[1])
+    if op == OP_FORNEXT:
+        return (arg[0],)
+    return ()
+
+
+def _retarget(op, arg, m):
+    if op in _JUMPY:
+        return m(arg)
+    if op == OP_LOOP:
+        return (m(arg[0]), m(arg[1]), arg[2])
+    if op == OP_FORNEXT:
+        return (m(arg[0]),) + tuple(arg[1:])
+    return arg
+
+
+def _optimize(instrs, starts, lines):
+    """Constant folding, dead-jump removal, and superinstruction fusion.
+    Semantics-preserving by construction: folding is skipped whenever the
+    operation would raise (so runtime errors still happen at runtime, on
+    the right line), no rewrite window may contain a jump target or a
+    statement start in its interior, and every fused opcode performs the
+    exact same checks as the instructions it replaces."""
+    while True:
+        n = len(instrs)
+
+        # Collapse jump-to-jump chains. The cycle guard matters: 'forever'
+        # with an empty body is a legal jump to itself.
+        def final_target(t):
+            seen = set()
+            while t < n and t not in seen and instrs[t][0] == OP_JUMP:
+                seen.add(t)
+                t = instrs[t][1]
+            return t
+
+        retargeted = False
+        for i, (op, arg) in enumerate(instrs):
+            ts = _targets_of(op, arg)
+            if ts and tuple(final_target(t) for t in ts) != tuple(ts):
+                instrs[i] = (op, _retarget(op, arg, final_target))
+                retargeted = True
+
+        protected = set(starts)
+        for op, arg in instrs:
+            protected.update(_targets_of(op, arg))
+
+        out = []
+        new_index = [0] * (n + 1)
+        rewrote = False
+        i = 0
+        while i < n:
+            op, arg = instrs[i]
+            op2, arg2 = instrs[i + 1] if i + 1 < n else (None, None)
+            op3, arg3 = instrs[i + 2] if i + 2 < n else (None, None)
+            free2 = i + 1 not in protected
+            free3 = free2 and i + 2 not in protected
+            fused = None
+            width = 1
+            if free3:
+                if op == OP_CONST and op2 == OP_CONST and op3 in (OP_BIN, OP_CMP):
+                    try:
+                        val = (bin_op if op3 == OP_BIN else cmp_op)(arg3, arg, arg2)
+                        fused, width = (OP_CONST, val), 3
+                    except Exception:
+                        pass   # would raise at runtime: leave it there
+                if fused is None and op == OP_LOAD and op3 == OP_BIN:
+                    if op2 == OP_CONST:
+                        fused, width = (OP_BIN_LC, (arg, arg2, arg3)), 3
+                    elif op2 == OP_LOAD:
+                        fused, width = (OP_BIN_LL, (arg, arg2, arg3)), 3
+                if fused is None and op == OP_LOAD and op2 == OP_CONST and op3 == OP_CMP:
+                    fused, width = (OP_CMP_LC, (arg, arg2, arg3)), 3
+                if fused is None and op == OP_LOAD0 and op2 == OP_CONST \
+                        and op3 == OP_ADDVAR and arg3 == arg:
+                    fused, width = (OP_ADDVAR_C, (arg, arg2)), 3
+            if fused is None and free2 and op == OP_CONST:
+                if op2 == OP_BIN:
+                    fused, width = (OP_BIN_XC, (arg2, arg)), 2
+                elif op2 == OP_CMP:
+                    fused, width = (OP_CMP_XC, (arg2, arg)), 2
+                elif op2 == OP_NOT:
+                    fused, width = (OP_CONST, not arg), 2
+                elif op2 == OP_BOOL:
+                    fused, width = (OP_CONST, bool(arg)), 2
+            if fused is None and op == OP_JUMP and arg == i + 1:
+                new_index[i] = len(out)   # jump to next instruction: dead
+                rewrote = True
+                i += 1
+                continue
+            for k in range(width):
+                new_index[i + k] = len(out)
+            out.append(fused if fused else (op, arg))
+            if fused:
+                rewrote = True
+            i += width
+        new_index[n] = len(out)
+
+        instrs = [(op, _retarget(op, arg, lambda p: new_index[p]))
+                  for op, arg in out]
+        new_starts, new_lines = [], []
+        for s, ln in zip(starts, lines):
+            p = new_index[s]
+            if new_starts and new_starts[-1] == p:
+                new_lines[-1] = ln
+            elif not new_lines or new_lines[-1] != ln:
+                new_starts.append(p)
+                new_lines.append(ln)
+        starts, lines = new_starts, new_lines
+        if not (rewrote or retargeted):
+            return instrs, starts, lines
 
 
 class _Compiler:
@@ -1870,6 +1998,8 @@ class _Compiler:
             elif isinstance(arg, tuple) and any(isinstance(a, _Lbl) for a in arg):
                 arg = tuple(m(a.pos) if isinstance(a, _Lbl) else a for a in arg)
             instrs.append((op, arg))
+        if OPTIMIZE:
+            instrs, starts, lines = _optimize(instrs, starts, lines)
         return Code(name, instrs, starts, lines)
 
     # ---- statements ----
@@ -2383,6 +2513,25 @@ def _vm_exec(frames, env):
                 elif op == OP_BIN:
                     b = stack.pop()
                     stack[-1] = bin_op(arg, stack[-1], b)
+                elif op == OP_BIN_LC:
+                    name, c, bop = arg
+                    v = env_get(name, _MISSING)
+                    if v is _MISSING:
+                        raise NameError(f"You haven't set '{name}' yet.")
+                    stack.append(bin_op(bop, v, c))
+                elif op == OP_CMP_LC:
+                    name, c, cop = arg
+                    v = env_get(name, _MISSING)
+                    if v is _MISSING:
+                        raise NameError(f"You haven't set '{name}' yet.")
+                    stack.append(cmp_op(cop, v, c))
+                elif op == OP_ADDVAR_C:
+                    name, c = arg
+                    cur = env_get(name, 0)
+                    if isinstance(cur, list):
+                        cur.append(c)
+                    else:
+                        env[name] = add_vals(cur, c)
                 elif op == OP_FORNEXT:
                     try:
                         v = next(f.iters[-1])
@@ -2481,6 +2630,19 @@ def _vm_exec(frames, env):
                     stack.pop()
                 elif op == OP_PRINT:
                     print(to_str(stack.pop()))
+                elif op == OP_BIN_LL:
+                    n1, n2, bop = arg
+                    a = env_get(n1, _MISSING)
+                    if a is _MISSING:
+                        raise NameError(f"You haven't set '{n1}' yet.")
+                    b = env_get(n2, _MISSING)
+                    if b is _MISSING:
+                        raise NameError(f"You haven't set '{n2}' yet.")
+                    stack.append(bin_op(bop, a, b))
+                elif op == OP_BIN_XC:
+                    stack[-1] = bin_op(arg[0], stack[-1], arg[1])
+                elif op == OP_CMP_XC:
+                    stack[-1] = cmp_op(arg[0], stack[-1], arg[1])
                 elif op == OP_SETPATH:
                     name, nkeys = arg
                     val = stack.pop()

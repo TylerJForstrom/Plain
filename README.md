@@ -87,7 +87,14 @@ Plain has two engines that are guaranteed to behave identically:
   explicit call frames. `stop`, `skip`, and `give back` compile to plain
   jumps — no exceptions on the hot path. Each compiled chunk carries a
   line-number table (like CPython's), so tracking the current line costs
-  nothing until an error actually needs to report one.
+  nothing until an error actually needs to report one. A peephole
+  optimizer then folds constant expressions (`2 + 3 * 4` becomes one
+  `CONST 14`), collapses jump-to-jump chains, deletes dead jumps, and
+  fuses hot instruction pairs into superinstructions (`add 1 to i` is a
+  single `ADDVAR_C` instead of three instructions). Folding is skipped
+  whenever the operation would raise, so runtime errors still happen at
+  runtime, on the right line — the differential suite and the fuzzer
+  hold the optimizer to the exact same behavior as the tree-walker.
 - **The tree-walking interpreter** (`--engine=ast`). The original
   engine: it walks the AST directly and uses Python exceptions for
   control flow. `--trace` always uses this engine, because its recursive
