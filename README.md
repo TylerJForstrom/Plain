@@ -134,23 +134,27 @@ of why bytecode VMs exist.
 
 ### Measured speed
 
-From `python bench.py` (Python 3.12, Windows, best of 5 runs per
-engine; programs parsed once, output suppressed during timing —
-compiling to bytecode took ~0.1 ms per workload):
+Three engines, one story: tree-walker → bytecode VM → optimizing VM.
+Measured by CI on a quiet GitHub Actions runner (Python 3.12, best of
+7 interleaved rounds per engine; programs parsed once, output
+suppressed during timing; compiling took ~0.1–0.2 ms per workload).
+CI posts this table as a commit comment on every push to main, so the
+numbers below are reproducible, not hand-picked:
 
-| workload               |  AST engine | bytecode VM | speedup |
-| ---------------------- | ----------: | ----------: | ------: |
-| fib(18), recursive     |    143.3 ms |     43.6 ms |   3.29x |
-| loop arithmetic (200k) |    508.0 ms |    376.6 ms |   1.35x |
-| string building (20k)  |     57.2 ms |     49.8 ms |   1.15x |
-| list ops (40k)         |    145.3 ms |    137.0 ms |   1.06x |
-| lookup tally (30k)     |     85.9 ms |     81.6 ms |   1.05x |
+| workload               | AST engine | bytecode VM | + optimizer | speedup |
+| ---------------------- | ---------: | ----------: | ----------: | ------: |
+| fib(18), recursive     |   122.3 ms |     29.0 ms |     25.5 ms |   4.79x |
+| loop arithmetic (200k) |   373.8 ms |    281.1 ms |    252.7 ms |   1.48x |
+| string building (20k)  |    50.8 ms |     36.6 ms |     33.2 ms |   1.53x |
+| list ops (40k)         |   122.6 ms |     96.2 ms |     90.5 ms |   1.35x |
+| lookup tally (30k)     |    80.1 ms |     74.8 ms |     74.5 ms |   1.07x |
 
 Honest summary: the VM shines on function-call-heavy code (calls become
 frame pushes instead of nested Python calls plus exception-based
-returns) and is a modest 1.05–1.4x on statement-heavy loops, where both
-engines spend most of their time in the same shared runtime helpers.
-Numbers vary a little run to run; rerun `bench.py` to reproduce.
+returns), the optimizer adds a further 5–10% nearly everywhere, and
+statement-heavy dictionary code is the smallest win because both
+engines spend that time in the same shared runtime helpers. Rerun
+`bench.py` to reproduce locally.
 
 ## The basics
 

@@ -3,3 +3,6 @@ _demo_out.txt
 __pycache__/
 # copied into the site by the Netlify build (see netlify.toml)
 web/plain.py
+# fuzzer scratch program and saved divergences
+_fuzz_current.plain
+fuzz_failures/
