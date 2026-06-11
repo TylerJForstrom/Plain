@@ -8,6 +8,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write   # lets the benchmark step comment on the commit
     steps:
       - uses: actions/checkout@v4
 
@@ -28,4 +30,19 @@ jobs:
         run: python fuzz.py --n 400
 
       - name: Benchmarks (smoke test, asserts engines agree)
-        run: python bench.py
+        run: |
+          python bench.py | tee bench_out.txt
+          {
+            echo '### Benchmarks (this runner)'
+            echo '```'
+            cat bench_out.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post benchmark table as a commit comment
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          body="$(printf 'CI benchmarks (GitHub Actions runner):\n\n```\n%s\n```' "$(cat bench_out.txt)")"
+          gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" -f body="$body" || true
