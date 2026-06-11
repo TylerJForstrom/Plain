@@ -1,5 +1,7 @@
 # Plain
 
+![CI](https://github.com/TylerJForstrom/Plain/actions/workflows/ci.yml/badge.svg)
+
 Plain is a programming language that reads like English. It sits between
 block coding and Python: real typed-out code, but with words instead of
 symbols. The goal is that a normal person can learn it in an afternoon and
@@ -91,14 +93,20 @@ Plain has two engines that are guaranteed to behave identically:
   control flow. `--trace` always uses this engine, because its recursive
   shape matches the line-by-line narration.
 
-Identical behavior isn't an aspiration, it's a test gate:
-`python difftest.py` runs the full test suite, the demo script, every
-example program, and ~35 corner cases (error messages with line numbers,
-`try`/`otherwise`, `stop` that crosses a function call, parameter
-shadowing, and so on) through **both** engines and requires byte-for-byte
-identical output and exit codes. Both engines also share one
-implementation of the arithmetic, comparison, and built-in functions, so
-error text can't drift between them.
+Identical behavior isn't an aspiration, it's a test gate, three layers
+deep — and CI runs all of it on every push:
+
+- `python difftest.py` runs the full test suite, the demo script, every
+  example program, and ~35 corner cases (error messages with line
+  numbers, `try`/`otherwise`, `stop` that crosses a function call,
+  parameter shadowing, and so on) through **both** engines and requires
+  byte-for-byte identical output and exit codes.
+- `python fuzz.py` generates hundreds of random valid Plain programs —
+  bounded loops, functions, lookups, error paths and all — and requires
+  the same byte-for-byte agreement. Any divergence is saved to
+  `fuzz_failures/` with its seed for replay.
+- Both engines share one implementation of the arithmetic, comparison,
+  and built-in functions, so error text can't drift between them.
 
 `--disasm` prints the human-readable bytecode for any program — the web
 playground has a "Show bytecode" toggle that does the same thing.

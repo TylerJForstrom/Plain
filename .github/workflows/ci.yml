@@ -23,5 +23,8 @@ jobs:
       - name: Differential tests — both engines byte-identical
         run: python difftest.py
 
+      - name: Differential fuzzing — 400 random programs
+        run: python fuzz.py --n 400
+
       - name: Benchmarks (smoke test, asserts engines agree)
         run: python bench.py
