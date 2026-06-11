@@ -114,6 +114,7 @@ const outputEl = document.getElementById("output");
 const runBtn = document.getElementById("run-btn");
 const stopBtn = document.getElementById("stop-btn");
 const traceCheck = document.getElementById("trace-check");
+const bytecodeCheck = document.getElementById("bytecode-check");
 let worker = null;
 let engineReady = false;
 let running = false;
@@ -158,6 +159,9 @@ function bootWorker() {
       for (const line of m.text.split("\n")) {
         appendOutput(line + "\n", classifyLine(line));
       }
+    } else if (m.type === "disasm-out") {
+      appendOutput(m.text + "\n", "out-trace");
+      appendOutput("── output ──\n", "out-dim");
     } else if (m.type === "done") {
       finishRun();
     }
@@ -178,7 +182,12 @@ runBtn.addEventListener("click", () => {
   outputEl.textContent = "";
   runBtn.hidden = true;
   stopBtn.hidden = false;
-  worker.postMessage({ type: "run", code: editor.getValue(), trace: traceCheck.checked });
+  worker.postMessage({
+    type: "run",
+    code: editor.getValue(),
+    trace: traceCheck.checked,
+    bytecode: bytecodeCheck.checked,
+  });
   runTimeout = setTimeout(() => {
     appendOutput("\nStopped after 20 seconds — maybe a loop that never ends?\n", "out-err");
     hardStop();

@@ -24,7 +24,11 @@ def _run_plain(src, trace):
     plain.TRACE["on"] = bool(trace)
     plain.TRACE["src"] = src.splitlines()
     try:
-        plain.run(plain.parse(plain.tokenize(src)), {})
+        ast = plain.parse(plain.tokenize(src))
+        if trace:
+            plain.run(ast, {})        # trace narration walks the tree
+        else:
+            plain.run_bytecode(ast, {})   # default engine: the bytecode VM
     except SyntaxError as e:
         print("Oops: " + str(e))
     except plain.PlainRuntimeError as e:
@@ -37,6 +41,12 @@ def _run_plain(src, trace):
         print("Oops: Too much recursion - a function kept calling itself forever.")
     except SystemExit:
         pass
+
+def _disasm_plain(src):
+    try:
+        return plain.disassemble_source(src)
+    except SyntaxError as e:
+        return "Oops: " + str(e)
 `);
   return py;
 })();
@@ -57,6 +67,11 @@ onmessage = async (e) => {
   py.setStdout({ batched: (t) => postMessage({ type: "out", text: t }) });
   py.setStderr({ batched: (t) => postMessage({ type: "out", text: t }) });
   try {
+    if (e.data.bytecode) {
+      const disasm = py.globals.get("_disasm_plain");
+      postMessage({ type: "disasm-out", text: disasm(e.data.code) });
+      disasm.destroy();
+    }
     const runner = py.globals.get("_run_plain");
     runner(e.data.code, !!e.data.trace);
     runner.destroy();
