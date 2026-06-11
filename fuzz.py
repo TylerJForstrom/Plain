@@ -68,13 +68,17 @@ class Gen:
             return self.pick("num")
         if k == "bin":
             op = r.choice(NUM_BIN)
+            if op == "*":
+                # Multiply only by small literals. var * var inside a loop
+                # squares the value every iteration, and a few dozen
+                # squarings of a bignum is effectively a hang.
+                return f"({self.num_expr(d + 1)} * {r.randint(0, 4)})"
             return f"({self.num_expr(d + 1)} {op} {self.num_expr(d + 1)})"
         if k == "unary":
             inner = self.num_expr(d + 1)
             return r.choice([
                 f"absolute value of ({inner})",
                 f"floor of ({inner})",
-                f"({inner}) squared",
                 f"middle of ({inner}) and ({self.num_expr(d + 1)})",
                 f"remainder of ({inner}) divided by {r.randint(1, 7)}",
             ])
