@@ -1163,6 +1163,117 @@ def path_set(env, name, keys, val):
         raise RuntimeError(f"'{name}' is not a list or lookup.")
 
 
+# Shared by the AST interpreter and the bytecode VM so both engines give
+# the exact same results and the exact same friendly error messages.
+
+def bin_op(op, av, bv):
+    try:
+        if op == "+": return add_vals(av, bv)
+        if op == "-": return av - bv
+        if op == "*": return av * bv
+        if op == "/":
+            if bv == 0:
+                raise RuntimeError("You can't divide by zero.")
+            return av / bv
+        if op == "//":
+            if bv == 0:
+                raise RuntimeError("You can't divide by zero.")
+            return av // bv
+        if op == "**":
+            return av ** bv
+    except TypeError:
+        shown = "^" if op == "**" else op
+        tip = (" Tip: 'value of x' turns text into a number."
+               if isinstance(av, str) or isinstance(bv, str) else "")
+        raise RuntimeError(
+            f"You can't use '{shown}' with {kind_name(av)} and "
+            f"{kind_name(bv)}.{tip}") from None
+
+
+def cmp_op(op, av, bv):
+    try:
+        return {"eq": av == bv, "ne": av != bv, "gt": av > bv,
+                "lt": av < bv, "ge": av >= bv, "le": av <= bv}[op]
+    except TypeError:
+        raise RuntimeError(
+            f"You can't compare {kind_name(av)} with {kind_name(bv)}.") from None
+
+
+def call_builtin(name, vals):
+    x = vals[0] if vals else None
+    if name == "count":     return len(x)
+    if name == "sum":       return sum(x)
+    if name == "average":   return sum(x) / len(x)
+    if name == "max":       return max(x)
+    if name == "min":       return min(x)
+    if name == "first":     return x[0]
+    if name == "last":      return x[-1]
+    if name == "uppercase": return str(x).upper()
+    if name == "lowercase": return str(x).lower()
+    if name == "randnum":   return random.randint(int(vals[0]), int(vals[1]))
+    if name == "randitem":  return random.choice(x)
+    if name == "sqrt":      return math.sqrt(x)
+    if name == "abs":       return abs(x)
+    if name == "round":
+        # round halves away from zero, like school math (Python's
+        # round() would give round(4.5) == 4)
+        return int(math.floor(x + 0.5)) if x >= 0 else int(math.ceil(x - 0.5))
+    if name == "split":     return str(vals[0]).split(vals[1])
+    if name == "join":      return str(vals[1]).join(to_str(v) for v in vals[0])
+    if name == "take_first":
+        seq = vals[0] if isinstance(vals[0], (str, list)) else list(vals[0])
+        n = int(vals[1])
+        return seq[:n] if n > 0 else seq[:0]
+    if name == "take_last":
+        seq = vals[0] if isinstance(vals[0], (str, list)) else list(vals[0])
+        n = int(vals[1])
+        return seq[-n:] if n > 0 else seq[:0]
+    if name == "now":       return time.strftime("%Y-%m-%d %H:%M:%S")
+    if name == "mod":
+        if vals[1] == 0:
+            raise RuntimeError("You can't take a remainder when dividing by zero.")
+        return vals[0] % vals[1]
+    if name == "floor":     return math.floor(x)
+    if name == "middle":    return (int(vals[0]) + int(vals[1])) // 2
+    if name == "position":
+        item, container = vals
+        if isinstance(container, str):
+            return container.find(to_str(item)) + 1
+        return container.index(item) + 1 if item in container else 0
+    if name == "grid":
+        rows, cols, fill = int(vals[0]), int(vals[1]), vals[2]
+        return [[fill for _ in range(cols)] for _ in range(rows)]
+    if name == "max2":    return max(vals)
+    if name == "min2":    return min(vals)
+    if name == "argv":    return [coerce(a) for a in sys.argv[2:]]
+    if name == "countin":
+        item, container = vals
+        if isinstance(container, list):
+            return container.count(item)
+        return to_str(container).count(to_str(item))
+    if name == "replace":
+        old, new, container = vals
+        if isinstance(container, list):
+            return [new if item == old else item for item in container]
+        return to_str(container).replace(to_str(old), to_str(new))
+    if name == "trim":      return to_str(x).strip()
+    if name == "slice":
+        seq = vals[0] if isinstance(vals[0], (str, list)) else list(vals[0])
+        i, j = max(1, int(vals[1])), min(len(seq), int(vals[2]))
+        return seq[i - 1:j] if i <= j else seq[:0]
+    if name == "numrange":
+        a, b, s = int(vals[0]), int(vals[1]), int(vals[2])
+        if s <= 0:
+            raise RuntimeError(
+                "The step in 'numbers from ... by ...' must be a positive number.")
+        return list(range(a, b + 1, s)) if b >= a else list(range(a, b - 1, -s))
+    if name == "letters":   return list(to_str(x))
+    if name == "keys":      return list(x.keys())
+    if name == "values":    return list(x.values())
+    if name == "coerce":    return coerce(to_str(x))
+    raise RuntimeError(f"There is no built-in named '{name}'.")
+
+
 def evaluate(node, env):
     t = node[0]
     if t == "num":
@@ -1178,37 +1289,10 @@ def evaluate(node, env):
         return env[node[1]]
     if t == "bin":
         _, op, a, b = node
-        av, bv = evaluate(a, env), evaluate(b, env)
-        try:
-            if op == "+": return add_vals(av, bv)
-            if op == "-": return av - bv
-            if op == "*": return av * bv
-            if op == "/":
-                if bv == 0:
-                    raise RuntimeError("You can't divide by zero.")
-                return av / bv
-            if op == "//":
-                if bv == 0:
-                    raise RuntimeError("You can't divide by zero.")
-                return av // bv
-            if op == "**":
-                return av ** bv
-        except TypeError:
-            shown = "^" if op == "**" else op
-            tip = (" Tip: 'value of x' turns text into a number."
-                   if isinstance(av, str) or isinstance(bv, str) else "")
-            raise RuntimeError(
-                f"You can't use '{shown}' with {kind_name(av)} and "
-                f"{kind_name(bv)}.{tip}") from None
+        return bin_op(op, evaluate(a, env), evaluate(b, env))
     if t == "cmp":
         _, op, a, b = node
-        av, bv = evaluate(a, env), evaluate(b, env)
-        try:
-            return {"eq": av == bv, "ne": av != bv, "gt": av > bv,
-                    "lt": av < bv, "ge": av >= bv, "le": av <= bv}[op]
-        except TypeError:
-            raise RuntimeError(
-                f"You can't compare {kind_name(av)} with {kind_name(bv)}.") from None
+        return cmp_op(op, evaluate(a, env), evaluate(b, env))
     if t == "index":
         return index_get(evaluate(node[1], env), evaluate(node[2], env))
     if t == "dict":
@@ -1266,78 +1350,7 @@ def evaluate(node, env):
         return result
     if t == "call":
         _, name, args = node
-        vals = [evaluate(a, env) for a in args]
-        x = vals[0] if vals else None
-        if name == "count":     return len(x)
-        if name == "sum":       return sum(x)
-        if name == "average":   return sum(x) / len(x)
-        if name == "max":       return max(x)
-        if name == "min":       return min(x)
-        if name == "first":     return x[0]
-        if name == "last":      return x[-1]
-        if name == "uppercase": return str(x).upper()
-        if name == "lowercase": return str(x).lower()
-        if name == "randnum":   return random.randint(int(vals[0]), int(vals[1]))
-        if name == "randitem":  return random.choice(x)
-        if name == "sqrt":      return math.sqrt(x)
-        if name == "abs":       return abs(x)
-        if name == "round":
-            # round halves away from zero, like school math (Python's
-            # round() would give round(4.5) == 4)
-            return int(math.floor(x + 0.5)) if x >= 0 else int(math.ceil(x - 0.5))
-        if name == "split":     return str(vals[0]).split(vals[1])
-        if name == "join":      return str(vals[1]).join(to_str(v) for v in vals[0])
-        if name == "take_first":
-            seq = vals[0] if isinstance(vals[0], (str, list)) else list(vals[0])
-            n = int(vals[1])
-            return seq[:n] if n > 0 else seq[:0]
-        if name == "take_last":
-            seq = vals[0] if isinstance(vals[0], (str, list)) else list(vals[0])
-            n = int(vals[1])
-            return seq[-n:] if n > 0 else seq[:0]
-        if name == "now":       return time.strftime("%Y-%m-%d %H:%M:%S")
-        if name == "mod":
-            if vals[1] == 0:
-                raise RuntimeError("You can't take a remainder when dividing by zero.")
-            return vals[0] % vals[1]
-        if name == "floor":     return math.floor(x)
-        if name == "middle":    return (int(vals[0]) + int(vals[1])) // 2
-        if name == "position":
-            item, container = vals
-            if isinstance(container, str):
-                return container.find(to_str(item)) + 1
-            return container.index(item) + 1 if item in container else 0
-        if name == "grid":
-            rows, cols, fill = int(vals[0]), int(vals[1]), vals[2]
-            return [[fill for _ in range(cols)] for _ in range(rows)]
-        if name == "max2":    return max(vals)
-        if name == "min2":    return min(vals)
-        if name == "argv":    return [coerce(a) for a in sys.argv[2:]]
-        if name == "countin":
-            item, container = vals
-            if isinstance(container, list):
-                return container.count(item)
-            return to_str(container).count(to_str(item))
-        if name == "replace":
-            old, new, container = vals
-            if isinstance(container, list):
-                return [new if item == old else item for item in container]
-            return to_str(container).replace(to_str(old), to_str(new))
-        if name == "trim":      return to_str(x).strip()
-        if name == "slice":
-            seq = vals[0] if isinstance(vals[0], (str, list)) else list(vals[0])
-            i, j = max(1, int(vals[1])), min(len(seq), int(vals[2]))
-            return seq[i - 1:j] if i <= j else seq[:0]
-        if name == "numrange":
-            a, b, s = int(vals[0]), int(vals[1]), int(vals[2])
-            if s <= 0:
-                raise RuntimeError(
-                    "The step in 'numbers from ... by ...' must be a positive number.")
-            return list(range(a, b + 1, s)) if b >= a else list(range(a, b - 1, -s))
-        if name == "letters":   return list(to_str(x))
-        if name == "keys":      return list(x.keys())
-        if name == "values":    return list(x.values())
-        if name == "coerce":    return coerce(to_str(x))
+        return call_builtin(name, [evaluate(a, env) for a in args])
     if t == "userfn":
         return call_user_fn(node[1], [evaluate(a, env) for a in node[2]], env)
     if t == "map":
